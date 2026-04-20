@@ -1,0 +1,3472 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Local Audio Visualizer - Ambient, CityScape, Darkwave & Streamer</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:;">
+  <style>
+
+    #colorPanel input[type="color"] {
+      width: 100%;
+      height: 40px;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    /* --- Visualizer Base Styles --- */
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* Global override for custom dragging */
+    body.is-dragging, body.is-dragging * {
+      cursor: grabbing !important;
+    }
+
+    #city {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 0;
+      pointer-events: auto;
+    }
+
+    /* --- Welcome/Start Modal --- */
+    #welcomePanel {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.95);
+      border: 2px solid #00ffff;
+      border-radius: 12px;
+      padding: 40px;
+      z-index: 20000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      color: #fff;
+      font-family: monospace;
+      min-width: 320px;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.15);
+    }
+    
+    #welcomePanel h2 {
+      margin: 0;
+      color: #00ffff;
+      font-size: 24px;
+      text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+      letter-spacing: 2px;
+    }
+
+    #welcomePanel p {
+      color: #ccc;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .welcome-options {
+      display: flex;
+      flex-direction: row;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .mode-select-btn {
+      flex: 1;
+      padding: 10px;
+      background: rgba(0, 255, 255, 0.05);
+      border: 1px solid #00ffff;
+      border-radius: 12px;
+      color: #00ffff;
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .mode-select-btn:hover {
+      background: #00ffff;
+      color: #000;
+      box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+      transform: scale(1.02);
+    }
+
+    /* --- Custom Local Player UI Styles --- */
+    
+    /* Invisible hover area to trigger the player fade in */
+    #playerHoverArea {
+      position: fixed;
+      top: 80px;
+      left: 0;
+      width: 340px;
+      height: 100px;
+      z-index: 10019;
+    }
+
+    #playerRow {
+      position: fixed;
+      top: 100px;
+      left: 24px;
+      z-index: 10020;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      background: rgba(0, 0, 0, 0.85);
+      padding: 12px 20px;
+      border: 2px solid #00ffff;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+      
+      /* Auto-hide styles */
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(-15px);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Reveal controls on hover */
+    #playerHoverArea:hover + #playerRow,
+    #playerRow:hover,
+    #playerRow:focus-within {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(0);
+    }
+
+    .player-controls {
+      display: flex;
+      gap: 6px;
+    }
+
+    .player-controls button, #controlsBtn, #setlistBtn {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid #00ffff;
+      color: #00ffff;
+      border-radius: 6px;
+      height: 36px;
+      min-width: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 16px;
+      transition: all 0.2s;
+    }
+
+    .player-controls button:hover, #controlsBtn:hover, #setlistBtn:hover {
+      background: #00ffff;
+      color: #000;
+    }
+    
+    .player-controls button.active {
+      background: #00ffff;
+      color: #000;
+    }
+
+    /* --- Now Playing Panel --- */
+    #nowPlaying {
+      position: fixed;
+      top: 50%;
+      left: 10%;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 30px 40px;
+      border-radius: 20px;
+      box-shadow: 0 10px 50px rgba(0, 0, 0, 0.5);
+      z-index: 10020;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 30px;
+      font-family: monospace;
+      min-width: 550px;
+      max-width: 1000px;
+      border: 2px solid #ccc;
+    }
+
+    #albumArt {
+      width: 120px;
+      height: 120px;
+      border-radius: 15px;
+      object-fit: cover;
+      background: #eee;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+    }
+
+    #trackInfo {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    #trackTitleRow {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 10px;
+    }
+
+    #trackTitle { 
+      font-weight: bold; 
+      color: #111; 
+      font-size: 40px; 
+      white-space: nowrap;
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+    }
+    
+    #trackArtist { 
+      font-size: 32px; 
+      color: #555; 
+      white-space: nowrap;
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0;
+    }
+    .close-btn:hover {
+      color: #fff;
+    }
+
+    /* Debug info */
+    #debug {
+      display: none;
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.5);
+      color: #0ff;
+      padding: 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      z-index: 10000;
+      max-width: 200px;
+    }
+
+    .panel-base { 
+      position: fixed;
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #00ffff;
+      border-radius: 8px;
+      padding: 10px;
+      z-index: 15000;
+      display: none;
+      color: #fff;
+      font-family: monospace;
+      box-shadow: 0 0 20px rgba(0, 255, 255, 0.15);
+    }
+
+    .panel-base.visible {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-base h2 {
+      margin: 0 0 10px 0;
+      color: #00ffff;
+      text-align: center;
+      font-size: 18px;
+      cursor: grab;
+      user-select: none;
+      padding-bottom: 5px;
+      border-bottom: 1px solid rgba(0,255,255,0.3);
+    }
+
+    #controlPanel { top: 200px; left: 24px; min-width: 400px; max-width: 500px; max-height: 70vh; overflow-y: auto; }
+    #colorPanel { top: 200px; left: 450px; min-width: 300px; }
+    
+    /* --- Setlist Panel Styles (Docked Sidebar) --- */
+    #setlistPanel {
+      position: fixed;
+      top: 0; 
+      right: 0; 
+      width: 400px;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.95);
+      border-left: 2px solid #00ffff;
+      z-index: 15000;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      box-sizing: border-box;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+      font-family: monospace;
+    }
+
+    #setlistPanel.visible {
+      transform: translateX(0);
+    }
+
+    #setlistPanel h2 {
+      margin: 0 0 15px 0;
+      color: #00ffff;
+      font-size: 22px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(0,255,255,0.3);
+      text-align: left;
+    }
+
+    .setlist-controls {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    /* OBS-Compatible Custom Dropdown */
+    .custom-select {
+      position: relative;
+      flex: 1;
+      font-family: monospace;
+      background: rgba(0, 0, 0, 0.8);
+      border: 1px solid #00ffff;
+      border-radius: 4px;
+      color: #00ffff;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .select-selected {
+      padding: 6px 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      position: relative;
+    }
+
+    .select-selected:after {
+      content: '▼';
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 10px;
+    }
+
+    .select-items {
+      position: absolute;
+      background-color: rgba(0, 0, 0, 0.95);
+      top: 100%;
+      left: -1px;
+      right: -1px;
+      z-index: 99;
+      border: 1px solid #00ffff;
+      border-top: none;
+      max-height: 300px;
+      overflow-y: auto;
+      border-bottom-left-radius: 4px;
+      border-bottom-right-radius: 4px;
+    }
+
+    .select-hide {
+      display: none;
+    }
+
+    .select-items div {
+      padding: 8px 10px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(0,255,255,0.1);
+    }
+
+    .select-items div:hover {
+      background-color: rgba(0, 255, 255, 0.2);
+    }
+
+    #setlistContainer {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid rgba(0, 255, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.5);
+      margin-top: 5px;
+    }
+
+    .setlist-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+      transition: background 0.2s;
+    }
+    
+    .setlist-item:hover {
+      background: rgba(0, 255, 255, 0.1);
+    }
+
+    .setlist-item.playing {
+      background: rgba(0, 255, 255, 0.2);
+      border-left: 3px solid #00ffff;
+    }
+
+    /* OBS-Compatible Custom Drag Feedback */
+    .setlist-item.custom-dragging {
+      opacity: 0.4;
+      background: rgba(0, 255, 255, 0.2);
+    }
+
+    .setlist-item.drag-over-top {
+      border-top: 2px dashed #00ffff;
+    }
+
+    .setlist-item.drag-over-bottom {
+      border-bottom: 2px dashed #00ffff;
+    }
+
+    .setlist-drag-handle {
+      color: #555;
+      margin-right: 12px;
+      font-size: 14px;
+      cursor: grab;
+      padding: 5px;
+      user-select: none;
+    }
+
+    .setlist-drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .setlist-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .setlist-title {
+      color: #fff;
+      font-weight: bold;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 13px;
+    }
+
+    .setlist-artist {
+      color: #888;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .setlist-meta {
+      text-align: right;
+      font-size: 11px;
+      color: #666;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      margin-left: 10px;
+    }
+    
+    .setlist-duration { color: #00ffff; }
+
+    /* Custom Scrollbar for setlist */
+    #setlistContainer::-webkit-scrollbar { width: 6px; }
+    #setlistContainer::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+    #setlistContainer::-webkit-scrollbar-thumb { background: rgba(0,255,255,0.4); border-radius: 3px; }
+    #setlistContainer::-webkit-scrollbar-thumb:hover { background: rgba(0,255,255,0.8); }
+
+    /* --- General Controls --- */
+    .control-section {
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #333;
+    }
+
+    .control-section:last-child {
+      border-bottom: none;
+    }
+
+    .control-section label {
+      display: block;
+      color: #ccc;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+
+    .profile-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .profile-btn {
+      background: rgba(0, 255, 255, 0.1);
+      border: 1px solid #00ffff;
+      color: #00ffff;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+
+    .profile-btn:hover {
+      background: rgba(0, 255, 255, 0.2);
+    }
+
+    .profile-btn.active {
+      background: #00ffff;
+      color: #000;
+    }
+
+    .control-info {
+      font-size: 11px;
+      color: #888;
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    .setting-slider { width: 100%; margin: 5px 0; }
+    .setting-value { color: #0ff; font-weight: bold; }
+    .slider-row { display: flex; gap: 20px; }
+    .slider-half { flex: 1; min-width: 0; }
+
+    .experimental-checkboxes { display: flex; flex-direction: row; gap: 8px; margin-top: 8px; }
+
+    .checkbox-container {
+      display: flex; align-items: center; cursor: pointer; font-size: 14px; color: #ccc;
+      position: relative; padding-left: 25px; user-select: none;
+    }
+
+    .checkbox-container input[type="checkbox"] { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
+    .checkmark {
+      position: absolute; top: 0; left: 0; height: 18px; width: 18px;
+      background-color: rgba(0, 255, 255, 0.1); border: 2px solid #00ffff; border-radius: 3px; transition: all 0.2s;
+    }
+    .checkbox-container:hover input ~ .checkmark { background-color: rgba(0, 255, 255, 0.2); }
+    .checkbox-container input:checked ~ .checkmark { background-color: #00ffff; }
+    .checkmark:after { content: ""; position: absolute; display: none; }
+    .checkbox-container input:checked ~ .checkmark:after { display: block; }
+    .checkbox-container .checkmark:after {
+      left: 5px; top: 2px; width: 4px; height: 8px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg);
+    }
+
+    #changeIndicator {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8); color: #00ffff; padding: 12px 24px; border-radius: 8px;
+      border: 2px solid #00ffff; font-family: monospace; font-size: 18px; font-weight: bold;
+      z-index: 20000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease-in-out;
+    }
+
+    #changeIndicator.visible { opacity: 1; pointer-events: auto; }
+
+    /* --- Styles for Mode-Specific Controls --- */
+    #controlPanel.mode-ambient .cityscape-setting,
+    #controlPanel.mode-ambient .darkwave-setting,
+    #controlPanel.mode-ambient .cityscape2-setting { display: none; }
+    
+    #controlPanel.mode-cityscape .ambient-setting,
+    #controlPanel.mode-cityscape .darkwave-setting,
+    #controlPanel.mode-cityscape .cityscape2-setting { display: none; }
+    
+    #controlPanel.mode-darkwave .ambient-setting,
+    #controlPanel.mode-darkwave .cityscape-setting,
+    #controlPanel.mode-darkwave .cityscape2-setting { display: none; }
+    
+    #controlPanel.mode-cityscape2 .ambient-setting,
+    #controlPanel.mode-cityscape2 .darkwave-setting,
+    #controlPanel.mode-cityscape2 .cityscape-setting { display: none; }
+
+    /* --- Styles for Mode-Specific COLOR Controls --- */
+    #colorPanel.mode-ambient .cityscape-color-settings,
+    #colorPanel.mode-ambient .darkwave-color-setting,
+    #colorPanel.mode-ambient .cityscape2-color-setting { display: none; }
+    
+    #colorPanel.mode-cityscape .ambient-color-settings,
+    #colorPanel.mode-cityscape .darkwave-color-setting,
+    #colorPanel.mode-cityscape .cityscape2-color-setting { display: none; }
+    
+    #colorPanel.mode-darkwave .ambient-color-settings,
+    #colorPanel.mode-darkwave .cityscape-color-settings,
+    #colorPanel.mode-cityscape2-color-setting { display: none; }
+    
+    #colorPanel.mode-cityscape2 .ambient-color-settings,
+    #colorPanel.mode-cityscape2 .cityscape-color-settings,
+    #colorPanel.mode-cityscape2 .darkwave-color-setting { display: none; }
+  </style>
+</head>
+
+<body>
+
+  <canvas id="city"></canvas>
+  
+  <div id="welcomePanel">
+      <h2>Select Mode</h2>
+      <p>Choose a visualizer style to begin</p>
+      <div class="welcome-options">
+          <button class="mode-select-btn" data-mode="ambient">Ambient</button>
+          <button class="mode-select-btn" data-mode="cityscape">CityScape</button>
+          <button class="mode-select-btn" data-mode="darkwave">Darkwave</button>
+          <button class="mode-select-btn" data-mode="cityscape2">City 2</button>
+      </div>
+  </div>
+
+  <div id="nowPlaying">
+      <img id="albumArt" src="" alt="Album Art" style="display: none;" />
+      <div id="trackInfo">
+          <div id="trackTitleRow">
+              <div id="trackTitle">No folder selected</div>
+          </div>
+          <div id="trackArtist">Click 📁 to load local music</div>
+      </div>
+  </div>
+
+ <!-- Auto-hiding control panel area -->
+ <div id="playerHoverArea"></div>
+ <div id="playerRow">
+    <div class="player-controls">
+      <button id="folderBtn" title="Select Music Folder">📁</button>
+      <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;" />
+      
+      <button id="prevBtn" title="Previous Track">⏮</button>
+      <button id="vizPlayBtn" aria-label="Play/Pause" title="Play">▶</button>
+      <button id="nextBtn" title="Next Track">⏭</button>
+      <button id="setlistBtn" title="Setlist Manager">📋</button>
+    </div>
+    
+    <button id="controlsBtn" title="Visualizer Settings">⚙️</button>
+</div>
+
+  <div id="debug">
+    <div id="audio-status">Audio: Not Started</div>
+    <div id="three-status">Three.js: Loading...</div>
+    <div id="levels-status">Levels: 0/0/0</div>
+  </div>
+
+  <!-- Setlist Manager Panel -->
+  <div id="setlistPanel">
+    <h2>Setlist Manager</h2>
+    <button class="close-btn" id="closeSetlistPanelBtn" title="Close">&times;</button>
+    
+    <div class="setlist-controls">
+        <div class="custom-select" id="customSortSelect">
+            <div class="select-selected">Sort by: Original Order</div>
+            <div class="select-items select-hide">
+                <div data-value="original">Sort by: Original Order</div>
+                <div data-value="fileName">Sort by: File Name (A-Z)</div>
+                <div data-value="title">Sort by: Song Title (A-Z)</div>
+                <div data-value="artist">Sort by: Artist (A-Z)</div>
+                <div data-value="album">Sort by: Album (A-Z)</div>
+                <div data-value="lengthDesc">Sort by: Length (Longest First)</div>
+                <div data-value="lengthAsc">Sort by: Length (Shortest First)</div>
+                <div data-value="dateModDesc">Sort by: Date Modified (Newest)</div>
+                <div data-value="dateModAsc">Sort by: Date Modified (Oldest)</div>
+                <div data-value="dateCreatedDesc">Sort by: Date Created (Newest)</div>
+            </div>
+        </div>
+        <button id="shuffleSetlistBtn" class="profile-btn">🔀 Shuffle</button>
+    </div>
+    
+    <div id="setlistContainer">
+        <!-- List items populated via JS -->
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="controlPanel" class="panel-base">
+    <h2>Settings</h2>
+    <button class="close-btn" id="closePanelBtn" title="Close">&times;</button>
+    
+    <div class="control-section">
+      <label>Visualization Mode</label>
+      <div class="profile-buttons">
+        <button id="ambientModeBtn" class="profile-btn" data-mode="ambient">Ambient</button>
+        <button class="profile-btn" data-mode="cityscape">CityScape</button>
+        <button id="darkwaveModeBtn" class="profile-btn" data-mode="darkwave">Darkwave</button>
+        <button id="cityscape2ModeBtn" class="profile-btn" data-mode="cityscape2">City 2</button>
+        <button id="colorBtn" title="Color Settings" class="profile-btn" style="margin-left: auto;">🎨 Colors</button>
+      </div>
+    </div>
+
+    <div class="control-section cityscape-setting">
+      <label>Performance Profile (shortcut: ◄ & ►)</label>
+      <div class="profile-buttons">
+        <button class="profile-btn" data-profile="mobile">Mobile</button>
+        <button class="profile-btn" data-profile="low">Low</button>
+        <button class="profile-btn" data-profile="medium">Medium</button>
+        <button class="profile-btn" data-profile="high">High</button>
+        <button class="profile-btn active" data-profile="ultra">Ultra</button>
+      </div>
+    </div>
+
+    <div class="control-section">
+      <label>Volume (shortcut: Shift + ▲ & ▼) <span class="setting-value" id="volumeValue">50</span></label>
+      <input type="range" class="setting-slider" id="volumeSlider" min="0" max="100" step="1" value="50">
+    </div>
+
+    <div class="control-section">
+      <label>Audio Sensitivity (shortcut: ▲ & ▼ ) <span class="setting-value" id="sensitivityValue">70</span></label>
+      <input type="range" class="setting-slider" id="sensitivitySlider" min="1" max="100" step="1" value="70">
+    </div>
+
+    <div class="control-section darkwave-setting">
+      <label>Flow Speed <span class="setting-value" id="flowSpeedValue">0.08</span></label>
+      <input type="range" class="setting-slider" id="flowSpeedSlider" min="0.0" max="0.3" step="0.005" value="0.08">
+    </div>
+    
+    <div class="control-section darkwave-setting">
+      <label>Distortion <span class="setting-value" id="distortionValue">0.25</span></label>
+      <input type="range" class="setting-slider" id="distortionSlider" min="0.0" max="1.0" step="0.01" value="0.25">
+    </div>
+
+    <div class="control-section ambient-setting">
+      <label>Orb Size <span class="setting-value" id="orbSizeValue">1.90</span></label>
+      <input type="range" class="setting-slider" id="orbSizeSlider" min="0.5" max="3.0" step="0.05" value="1.90">
+    </div>
+
+    <div class="control-section ambient-setting">
+      <label>Edge Sharpness <span class="setting-value" id="edgeSharpnessValue">0.67</span></label>
+      <input type="range" class="setting-slider" id="edgeSharpnessSlider" min="0.30" max="1.20" step="0.01" value="0.67">
+    </div>
+
+    <div class="control-section ambient-setting">
+      <label>Movement Speed <span class="setting-value" id="blobMovementSpeedValue">0.120</span></label>
+      <input type="range" class="setting-slider" id="blobMovementSpeedSlider" min="0.0" max="0.2" step="0.005" value="0.120">
+    </div>
+
+    <div class="control-section ambient-setting">
+      <label>Pulse Intensity <span class="setting-value" id="blobSpeedValue">0.035</span></label>
+      <input type="range" class="setting-slider" id="blobSpeedSlider" min="0.0" max="0.2" step="0.005" value="0.035">
+    </div>
+
+    <div class="control-section ambient-setting">
+      <label>Hue Speed <span class="setting-value" id="hueSpeedValue">0.35</span></label>
+      <input type="range" class="setting-slider" id="hueSpeedSlider" min="0.0" max="1.0" step="0.01" value="0.35">
+    </div>
+
+    <div class="control-section cityscape-setting">
+      <label>Speed Boost <span class="setting-value" id="speedValue">3.2</span></label>
+      <input type="range" class="setting-slider" id="speedSlider" min="0.0" max="10.0" step="0.1" value="3.2">
+    </div>
+
+    <div class="control-section cityscape-setting">
+        <div class="slider-row">
+            <div class="slider-half">
+                <label>Building Count <span class="setting-value" id="buildingValue">200</span></label>
+                <input type="range" class="setting-slider" id="buildingSlider" min="10" max="500" step="1" value="200">
+            </div>
+            <div class="slider-half">
+                <label>Building Dimmer <span class="setting-value" id="fogDensityValue">0.0050</span></label>
+                <input type="range" class="setting-slider" id="fogDensitySlider" min="0.000" max="0.020" step="0.0005" value="0.005">
+            </div>
+        </div>
+    </div>
+
+    <div class="control-section cityscape-setting">
+        <div class="slider-row">
+            <div class="slider-half">
+                <label>Max Building Height <span class="setting-value" id="maxHeightValue">70</span></label>
+                <input type="range" class="setting-slider" id="maxHeightSlider" min="20" max="150" step="1" value="70">
+            </div>
+            <div class="slider-half">
+                <label>City Width <span class="setting-value" id="cityWidthValue">150</span></label>
+                <input type="range" class="setting-slider" id="cityWidthSlider" min="50" max="300" step="1" value="150">
+            </div>
+        </div>
+    </div>
+
+    <div class="control-section cityscape-setting">
+        <div class="slider-row">
+            <div class="slider-half">
+                <label>Star Reactivity <span class="setting-value" id="starValue">2.75</span></label>
+                <input type="range" class="setting-slider" id="starSlider" min="0.5" max="5.0" step="0.25" value="2.75">
+            </div>
+            <div class="slider-half">
+                <label>Star Count <span class="setting-value" id="starValueDisplay">1200</span></label>
+                <input type="range" class="setting-slider" id="starSliderDisplay" min="100" max="1500" step="1" value="1200">
+            </div>
+        </div>
+    </div>
+
+    <!-- Cityscape 2 Settings -->
+    <div class="control-section cityscape2-setting">
+      <label>Wave Height <span class="setting-value" id="waveHeightValue">0.8</span></label>
+      <input type="range" class="setting-slider" id="waveHeightSlider" min="0.1" max="4.0" step="0.1" value="0.8">
+    </div>
+
+    <div class="control-section cityscape2-setting">
+      <label>Simulation Speed <span class="setting-value" id="simSpeedValue">0.25</span></label>
+      <input type="range" class="setting-slider" id="simSpeedSlider" min="0.0" max="1.0" step="0.05" value="0.25">
+    </div>
+
+    <div class="control-section cityscape2-setting">
+      <label>Color Cycle Speed <span class="setting-value" id="city2CycleSpeedValue">5</span></label>
+      <input type="range" class="setting-slider" id="city2CycleSpeedSlider" min="0" max="100" step="1" value="5">
+    </div>
+
+    <div class="control-section cityscape-setting">
+      <label>Experimental</label>
+      <div class="experimental-checkboxes">
+        <label class="checkbox-container">
+          <input type="checkbox" id="enableSubways" />
+          <span class="checkmark"></span>
+          Subways
+        </label>
+      </div>
+    </div>
+
+    <div class="control-info">
+      Press Shift+C to close • Changes apply immediately
+    </div>
+  </div>
+
+  <div id="colorPanel" class="panel-base">
+    <h2>Color Settings</h2>
+    <button class="close-btn" id="closeColorPanelBtn" title="Close">&times;</button>
+    
+    <div class="ambient-color-settings">
+        <div class="control-section">
+            <label>Color Palette (shortcut: </strong>◀  and ▶ arrow keys</strong>)</label>
+            <div class="profile-buttons">
+                <button class="profile-btn" data-palette="vibrant">Vibrant</button>
+                <button class="profile-btn active" data-palette="pastel">Original</button>
+                <button class="profile-btn" data-palette="dark">Dark</button>
+                <button class="profile-btn" data-palette="greyscale">Greyscale</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cityscape-color-settings">
+        <div class="control-section">
+          <label>Window Palette Base</label>
+          <input type="color" id="windowColorInput" value="#FFFFFF">
+        </div>
+    </div>
+
+    <div class="darkwave-color-setting">
+        <div class="control-section">
+          <label>Dot Color</label>
+          <input type="color" id="darkwaveColorInput" value="#ffffff">
+        </div>
+    </div>
+
+    <div class="cityscape2-color-setting">
+      <div class="control-section">
+          <label>Skyline Color</label>
+          <input type="color" id="skylineColorInput" value="#00ffff">
+      </div>
+       <div class="control-section">
+          <label>Waveform Color</label>
+          <input type="color" id="waveformColorInput" value="#0088ff">
+      </div>
+    </div>
+
+    <div class="control-info">
+      Changes are applied instantly
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<!-- jsmediatags for ID3 reading -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+
+<!-- Ambient Shaders -->
+<script id="vertexShader" type="x-shader/x-vertex">
+  precision highp float;
+  precision highp int;
+  void main() {
+    gl_Position = vec4(position, 1.0);
+  }
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+precision highp float;
+precision highp int;
+
+uniform float u_time;
+uniform vec2  u_resolution;
+uniform float u_bass;
+uniform float u_mid;
+uniform float u_high;
+uniform float u_baseR;
+uniform float u_blob_speed;
+uniform float u_hue_speed;
+uniform float u_edge_sharpness;
+uniform float u_movement_speed;
+
+uniform vec3 u_colorA;
+uniform vec3 u_colorB;
+uniform vec3 u_colorC;
+uniform vec3 u_colorD;
+uniform float u_apply_hue_shift;
+
+vec3 hueShift(vec3 color, float angle) {
+  const mat3 RGB2YIQ = mat3(
+    0.299,  0.587,  0.114,
+    0.596, -0.274, -0.322,
+    0.211, -0.523,  0.312
+  );
+  const mat3 YIQ2RGB = mat3(
+    1.000,  0.956,  0.621,
+    1.000, -0.272, -0.647,
+    1.000, -1.107,  1.705
+  );
+  vec3 yiq = RGB2YIQ * color;
+  float c = cos(angle), s = sin(angle);
+  vec3 r  = vec3(yiq.x, yiq.y*c - yiq.z*s, yiq.y*s + yiq.z*c);
+  return clamp(YIQ2RGB * r, 0.0, 1.0);
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy / u_resolution) * 2.0 - 1.0;
+  uv.x *= u_resolution.x / u_resolution.y;
+
+  float audioAmt = clamp(0.90*u_bass + 0.30*u_mid + 0.10*u_high, 0.0, 1.0);
+  audioAmt = pow(audioAmt, 0.75);
+
+  float total_speed = u_movement_speed + u_blob_speed;
+  float t = u_time * total_speed;
+
+  uv += 0.035 * vec2(
+    sin(uv.y*1.6 + t*0.7),
+    cos(uv.x*1.4 - t*0.6)
+  );
+
+  vec2 c1 = 0.95 * vec2( sin(t*0.80 + 0.00), sin(t*0.63 + 1.10) );
+  vec2 c2 = 0.95 * vec2( sin(t*0.92 + 1.70), sin(t*0.51 + 2.40) );
+  vec2 c3 = 0.95 * vec2( sin(t*0.74 + 3.00), sin(t*0.88 + 0.35) );
+  vec2 c4 = 0.95 * vec2( sin(t*0.66 + 2.40), sin(t*1.02 + 3.20) );
+
+  float R = u_baseR * (1.0 - 0.08 * audioAmt);
+  vec2 uvp = uv;
+  float flowStrength = 0.085;
+  float Rw = u_baseR * 1.45;
+
+  vec2 r1_distort = uvp - c1; float w1d = exp(-dot(r1_distort,r1_distort)/(Rw*Rw));
+  vec2 r2_distort = uvp - c2; float w2d = exp(-dot(r2_distort,r2_distort)/(Rw*Rw));
+  vec2 r3_distort = uvp - c3; float w3d = exp(-dot(r3_distort,r3_distort)/(Rw*Rw));
+  vec2 r4_distort = uvp - c4; float w4d = exp(-dot(r4_distort,r4_distort)/(Rw*Rw));
+
+  uvp += flowStrength * w1d * normalize(r1_distort);
+  uvp += flowStrength * w2d * normalize(r2_distort);
+  uvp += flowStrength * w3d * normalize(r3_distort);
+  uvp += flowStrength * w4d * normalize(r4_distort);
+
+  float d1 = length(uvp - c1);
+  float d2 = length(uvp - c2);
+  float d3 = length(uvp - c3);
+  float d4 = length(uvp - c4);
+
+  float edgeSharpness = u_edge_sharpness;
+
+  float g1 = 1.0 - smoothstep(R * edgeSharpness, R, d1);
+  float g2 = 1.0 - smoothstep(R * edgeSharpness, R, d2);
+  float g3 = 1.0 - smoothstep(R * edgeSharpness, R, d3);
+  float g4 = 1.0 - smoothstep(R * edgeSharpness, R, d4);
+
+  float q = 2.4;
+  float s1 = pow(g1, q), s2 = pow(g2, q), s3 = pow(g3, q), s4 = pow(g4, q);
+  float denom = s1 + s2 + s3 + s4 + 1e-5;
+  vec4 w = vec4(s1, s2, s3, s4) / denom;
+
+  float field = w.x*g1 + w.y*g2 + w.z*g3 + w.w*g4;
+  field *= 0.88 + 0.16 * audioAmt;
+
+  float hueRate = u_hue_speed;
+  vec3 shiftedA = hueShift(u_colorA, u_time*hueRate + 0.00);
+  vec3 shiftedB = hueShift(u_colorB, u_time*hueRate + 1.30);
+  vec3 shiftedC = hueShift(u_colorC, u_time*hueRate + 2.20);
+  vec3 shiftedD = hueShift(u_colorD, u_time*hueRate + 3.10);
+
+  vec3 hA = mix(u_colorA, shiftedA, u_apply_hue_shift);
+  vec3 hB = mix(u_colorB, shiftedB, u_apply_hue_shift);
+  vec3 hC = mix(u_colorC, shiftedC, u_apply_hue_shift);
+  vec3 hD = mix(u_colorD, shiftedD, u_apply_hue_shift);
+
+  vec3 lobes = w.x*hA + w.y*hB + w.z*hC + w.w*hD;
+
+  float lum = 1.0 - exp(-field * 4.0);
+  lum = pow(lum, 1.8);
+
+  vec3 col = lobes * (0.15 + 0.85 * lum);
+  col += 0.03 * smoothstep(0.75, 1.0, lum);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+</script>
+
+<!-- Darkwave Shaders -->
+<script id="darkwaveFragmentShader" type="x-shader/x-fragment">
+precision highp float;
+precision highp int;
+
+uniform float u_time;
+uniform vec2  u_resolution;
+uniform float u_bass;
+uniform float u_mid;
+uniform float u_high;
+uniform float u_pixel_density;
+uniform float u_flow_speed;
+uniform float u_distortion;
+uniform vec3 u_color; 
+
+vec3 mod28_9(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec2 mod28_9(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec3 permute(vec3 x) { return mod28_9(((x*34.0)+1.0)*x); }
+
+float snoise(vec2 v) {
+    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+    vec2 i  = floor(v + dot(v, C.yy));
+    vec2 x0 = v -   i + dot(i, C.xx);
+    vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    vec4 x12 = x0.xyxy + C.xxzz;
+    x12.xy -= i1;
+    i = mod28_9(i);
+    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+    m = m*m;
+    m = m*m;
+    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+    vec3 h = abs(x) - 0.5;
+    vec3 ox = floor(x + 0.5);
+    vec3 a0 = x - ox;
+    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+    vec3 g;
+    g.x  = a0.x  * x0.x  + h.x  * x0.y;
+    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+    return 130.0 * dot(m, g);
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+    uv.x *= u_resolution.x / u_resolution.y;
+    
+    float audio = (u_bass * 0.7 + u_mid * 0.2 + u_high * 0.1);
+    audio = pow(audio, 1.5) * 2.0;
+    
+    float angle_x = 0.8 + sin(u_time * 0.08) * 0.3;
+    float angle_y = 0.5 + cos(u_time * 0.08) * 0.3;
+
+    float wave_coord = uv.x * angle_x + uv.y * angle_y - u_time * u_flow_speed * 0.4;
+    
+    float dynamic_wave_freq = 2.5 + sin(u_time * 0.1) * 1.5;
+    float wave_shape = sin(wave_coord * dynamic_wave_freq);
+    float wave_mask = smoothstep(0.0, 0.7, abs(wave_shape));
+
+    vec2 distortion_offset = vec2(
+      snoise(uv * 2.0 + u_time * 0.1),
+      snoise(uv * 2.0 + u_time * 0.1 + 5.0)
+    ) * u_bass * u_distortion;
+    
+    float dynamic_noise_scale = 1.75 + sin(u_time * 0.15) * 0.75;
+    float noise_val = snoise((uv + distortion_offset) * dynamic_noise_scale);
+    noise_val = (noise_val + 1.0) * 0.5;
+
+    float combined_val = noise_val * wave_mask;
+
+    vec2 grid_uv = fract(uv * u_pixel_density);
+    float dist_from_center = length(grid_uv - 0.5);
+    
+    float dot_radius = 0.48 * pow(combined_val, 2.0) * (0.5 + u_mid * 0.5);
+    float dot = 1.0 - smoothstep(dot_radius - 0.05, dot_radius, dist_from_center);
+    
+    float brightness = pow(combined_val, 2.5) * (0.8 + u_high * 1.5);
+    float final_lum = dot * brightness;
+
+    gl_FragColor = vec4(u_color * final_lum, 1.0);
+}
+</script>
+
+<!-- Cityscape 2: Skyline Silhouette Shader -->
+<script id="skylineFragmentShader" type="x-shader/x-fragment">
+precision highp float;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec3 u_color;
+uniform float u_bass;
+uniform float u_mid;
+uniform float u_high;
+
+// Simple random function
+float random(vec2 st) {
+    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+}
+
+// Function to generate a city skyline layer
+vec2 cityLayer(vec2 uv, float seed, float heightFactor, float widthFactor) {
+    float x = uv.x * widthFactor + seed * 10.0;
+    
+    float buildingID = floor(x);
+    float buildingPos = fract(x);
+    float h = random(vec2(buildingID, seed));
+    float isSpire = step(0.85, random(vec2(buildingID + 0.5, seed)));
+    float baseHeight = h * 0.5 + 0.1; 
+    
+    if (isSpire > 0.5) {
+        if (buildingPos < 0.3 || buildingPos > 0.7) {
+            baseHeight = 0.0; 
+        } else {
+            baseHeight += 0.4; 
+        }
+    } else {
+        if (buildingPos > 0.85) baseHeight = 0.0;
+    }
+    
+    baseHeight *= heightFactor;
+    return vec2(step(uv.y, baseHeight), h);
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    uv.x *= u_resolution.x / u_resolution.y; 
+    
+    vec3 bgColor = vec3(0.0); 
+    bgColor += vec3(0.05, 0.05, 0.1) * (1.0 - uv.y);
+    
+    float scroll1 = u_time * 0.02;
+    vec2 uv1 = uv;
+    uv1.x += scroll1;
+    vec2 layer1Data = cityLayer(uv1, 1.0, 0.3, 15.0);
+    float layer1Mask = layer1Data.x;
+    float layer1Rand = layer1Data.y; 
+    
+    float l1_brightness = 0.2 + (layer1Rand * 0.2); 
+    l1_brightness += u_bass * 0.3; 
+    l1_brightness += sin(u_time * 2.0 + layer1Rand * 10.0) * u_mid * 0.2; 
+    
+    vec3 col1 = u_color * l1_brightness;
+    
+    float scroll2 = u_time * 0.05;
+    vec2 uv2 = uv;
+    uv2.x += scroll2;
+    vec2 layer2Data = cityLayer(uv2, 2.0, 0.5, 8.0);
+    float layer2Mask = layer2Data.x;
+    float layer2Rand = layer2Data.y;
+    
+    float l2_brightness = 0.5 + (layer2Rand * 0.3); 
+    
+    float audioHit = (u_bass * 0.4 + u_high * 0.2);
+    l2_brightness += audioHit * 1.15; 
+    
+    float strobe = step(0.8, sin(u_time * 20.0 + layer2Rand * 100.0)) * u_high;
+    l2_brightness += strobe;
+    
+    vec3 col2 = u_color * l2_brightness;
+    col2 += vec3(1.0) * max(0.0, l2_brightness - 1.0) * 0.5;
+    
+    vec3 finalColor = bgColor;
+    finalColor = mix(finalColor, col1, layer1Mask);
+    finalColor = mix(finalColor, col2, layer2Mask);
+    finalColor += u_color * 0.3 * exp(-uv.y * 3.0) * (0.2 + u_bass);
+
+    gl_FragColor = vec4(finalColor, 1.0);
+}
+</script>
+
+<!-- Cityscape 2: Waveform Net Vertex Shader -->
+<script id="waveformVertexShader" type="x-shader/x-vertex">
+uniform float u_time;
+uniform float u_bass;
+uniform float u_mid;
+uniform float u_high;
+uniform float u_wave_height;
+
+varying vec2 vUv;
+varying float vElevation;
+
+vec3 mod28_9(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 mod28_9(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 permute(vec4 x) { return mod28_9(((x*34.0)+1.0)*x); }
+vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+float snoise(vec3 v) { 
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i  = floor(v + dot(v, C.yyy) );
+  vec3 x0 = v - i + dot(i, C.xxx) ;
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min( g.xyz, l.zxy );
+  vec3 i2 = max( g.xyz, l.zxy );
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy; 
+  vec3 x3 = x0 - D.yyy;      
+  i = mod28_9(i); 
+  vec4 p = permute( permute( permute( 
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+  float n_ = 0.142857142857; 
+  vec3  ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_ );    
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4( x.xy, y.xy );
+  vec4 b1 = vec4( x.zw, y.zw );
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+  vec3 p0 = vec3(a0.xy,h.x);
+  vec3 p1 = vec3(a0.zw,h.y);
+  vec3 p2 = vec3(a1.xy,h.z);
+  vec3 p3 = vec3(a1.zw,h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                dot(p2,x2), dot(p3,x3) ) );
+}
+
+void main() {
+    vUv = uv;
+    vec3 pos = position;
+    
+    float lowFreq = u_bass;
+    float midFreq = u_mid;
+    
+    float noiseFreq = 2.0;
+    float noiseAmp = 3.0 * u_wave_height; 
+    
+    float wave1 = sin(uv.x * 5.0 + u_time * 0.5) * sin(uv.y * 3.0 + u_time * 0.3);
+    float detail = snoise(vec3(uv.x * 4.0, uv.y * 4.0, u_time * 0.2));
+    float kick = snoise(vec3(uv.x * 2.0, uv.y * 2.0, u_time * 2.0)) * (lowFreq * 4.0);
+    
+    float elevation = wave1 * 2.0 + detail * (1.0 + midFreq * 3.0) + kick;
+    
+    pos.z += elevation * noiseAmp;
+    vElevation = elevation; 
+    
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}
+</script>
+
+<script id="waveformFragmentShader" type="x-shader/x-fragment">
+uniform vec3 u_color;
+uniform float u_bass;
+
+varying vec2 vUv;
+varying float vElevation;
+
+void main() {
+    vec3 color = u_color;
+    float alpha = 0.3 + smoothstep(-2.0, 5.0, vElevation) * 0.7;
+    color += u_bass * 0.2;
+    gl_FragColor = vec4(color, alpha);
+}
+</script>
+
+  <script>
+    // ===================================================================
+    // ===== Global Audio Setup & Helpers ===============================
+    // ===================================================================
+
+    function updateDebug(type, message) {
+      const elem = document.getElementById(`${type}-status`);
+      if (elem) elem.textContent = `${type}: ${message}`;
+      console.log(`[${type}] ${message}`);
+    }
+
+    let ctx, aBass, aMid, aHigh, srcNode, compNode, gainNode, lowNode, midNode, hiNode;
+    let buf = {};
+    let audioSetupComplete = false;
+    let connectedToDest = false;
+
+    function setupFrom(audioSource){
+      try {
+        if (!ctx) {
+          updateDebug('audio', 'Creating single persistent AudioContext...');
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        const mkAnalyser = () => { const a=ctx.createAnalyser(); a.fftSize=2048; a.smoothingTimeConstant=.3; return a; };
+        if (!compNode) {
+          compNode = ctx.createDynamicsCompressor();
+          compNode.threshold.value=-28; compNode.knee.value=20; compNode.ratio.value=4; compNode.attack.value=0.003; compNode.release.value=0.15;
+
+          gainNode = ctx.createGain();
+          gainNode.gain.value = 2.2;
+
+          lowNode = ctx.createBiquadFilter();  lowNode.type='lowpass';  lowNode.frequency.value=250;
+          midNode = ctx.createBiquadFilter();  midNode.type='bandpass'; midNode.frequency.value=1500; midNode.Q.value=0.8;
+          hiNode  = ctx.createBiquadFilter();  hiNode.type='highpass';  hiNode.frequency.value=3000;
+
+          aBass = mkAnalyser(); aMid = mkAnalyser(); aHigh = mkAnalyser();
+
+          compNode.connect(gainNode);
+          gainNode.connect(lowNode);  lowNode.connect(aBass);
+          gainNode.connect(midNode);  midNode.connect(aMid);
+          gainNode.connect(hiNode);   hiNode.connect(aHigh);
+        }
+
+        if (srcNode) {
+          try { srcNode.disconnect(); } catch(_) {}
+          srcNode = null;
+        }
+
+        if (audioSource instanceof HTMLAudioElement) {
+          if (!audioSource.__mediaElementSource) {
+            audioSource.__mediaElementSource = ctx.createMediaElementSource(audioSource);
+          }
+          srcNode = audioSource.__mediaElementSource;
+        } else if (audioSource instanceof MediaStream) {
+          srcNode = ctx.createMediaStreamSource(audioSource);
+        } else {
+          throw new Error('Invalid audio source provided.');
+        }
+
+        srcNode.connect(compNode);
+
+        if (audioSource instanceof HTMLAudioElement) {
+          if (!connectedToDest) {
+            gainNode.connect(ctx.destination);
+            connectedToDest = true;
+          }
+        } else {
+          if (connectedToDest) {
+            try { gainNode.disconnect(ctx.destination); } catch(_) {}
+            connectedToDest = false;
+          }
+        }
+
+        buf.b = new Uint8Array(aBass.frequencyBinCount);
+        buf.m = new Uint8Array(aMid.frequencyBinCount);
+        buf.h = new Uint8Array(aHigh.frequencyBinCount);
+
+        audioSetupComplete = true;
+        updateDebug('audio', 'Web Audio graph ready');
+
+        const unlock = () => {
+          if (ctx && ctx.state === 'suspended') {
+            ctx.resume().then(() => updateDebug('audio', 'Context resumed'))
+                        .catch(e => updateDebug('audio', 'Resume failed: ' + e.message));
+          }
+          window.removeEventListener('click', unlock);
+        };
+        window.addEventListener('click', unlock);
+      } catch(e) {
+        console.error('Audio error: setupFrom is not defined', e);
+        updateDebug('audio', 'Setup Error: ' + e.message);
+      }
+    }
+
+    // ===================================================================
+    // ===== Local File, Folder & Setlist Manager Logic ==================
+    // ===================================================================
+    (function() {
+      const audio = document.createElement('audio');
+      audio.preload = 'none';
+      audio.playsInline = true;
+      audio.crossOrigin = 'anonymous';
+      document.body.appendChild(audio);
+      audio.volume = 0.5; 
+      
+      window.__SIR_AUDIO = audio;
+      window.dispatchEvent(new Event('sir-audio-ready'));
+
+      // Enhanced Playlist State
+      let playlistData = []; // Array of objects with metadata
+      let currentTrackIndex = -1;
+      let currentPictureUrl = null;
+      let isProcessingMetadata = false;
+
+      // Custom Drag State
+      let isDragging = false;
+      let dragSrcIndex = null;
+      let currentHoverIndex = null;
+
+      // UI Elements
+      const folderInput = document.getElementById('folderInput');
+      const folderBtn = document.getElementById('folderBtn');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const playBtn = document.getElementById('vizPlayBtn');
+      const trackTitle = document.getElementById('trackTitle');
+      const trackArtist = document.getElementById('trackArtist');
+      const albumArt = document.getElementById('albumArt');
+      
+      // Setlist UI
+      const setlistContainer = document.getElementById('setlistContainer');
+      const shuffleSetlistBtn = document.getElementById('shuffleSetlistBtn');
+      const customSortSelect = document.getElementById('customSortSelect');
+      const sortSelectDisplay = customSortSelect.querySelector('.select-selected');
+      const sortSelectItems = customSortSelect.querySelector('.select-items');
+
+      // Helper to format duration
+      function formatTime(seconds) {
+          if (!seconds || isNaN(seconds)) return "--:--";
+          const m = Math.floor(seconds / 60);
+          const s = Math.floor(seconds % 60);
+          return `${m}:${s.toString().padStart(2, '0')}`;
+      }
+
+      // Load files and setup Setlist
+      folderBtn.addEventListener('click', () => folderInput.click());
+      
+      folderInput.addEventListener('change', (e) => {
+          const files = Array.from(e.target.files).filter(f => 
+              f.type.startsWith('audio/') || 
+              f.name.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i)
+          );
+          
+          if (files.length === 0) {
+              alert("No audio files found in selected folder.");
+              return;
+          }
+          
+          playlistData = files.map((file, i) => ({
+              id: `track-${Date.now()}-${i}`, // Unique ID for finding elements after sort
+              file: file,
+              fileName: file.name,
+              title: file.name.replace(/\.[^/.]+$/, ""),
+              artist: "Unknown Artist",
+              album: "Unknown Album",
+              duration: 0,
+              dateModified: file.lastModified,
+              loaded: false
+          }));
+
+          renderSetlist();
+          playTrack(0); // Start playing the first track
+          
+          // Kick off background metadata extraction
+          if (!isProcessingMetadata) {
+              processNextMetadata(0);
+          }
+      });
+
+      // Background Queue for ID3 & Duration extraction
+      async function processNextMetadata(index) {
+          if (index >= playlistData.length) {
+              isProcessingMetadata = false;
+              return;
+          }
+          isProcessingMetadata = true;
+          const item = playlistData[index];
+
+          if (!item.loaded) {
+              // 1. Get ID3 Metadata
+              if (window.jsmediatags) {
+                  await new Promise(resolve => {
+                      window.jsmediatags.read(item.file, {
+                          onSuccess: function(tag) {
+                              item.title = tag.tags.title || item.title;
+                              item.artist = tag.tags.artist || item.artist;
+                              item.album = tag.tags.album || item.album;
+                              resolve();
+                          },
+                          onError: resolve // Proceed even on error
+                      });
+                  });
+              }
+
+              // 2. Get Duration via temporary audio element
+              await new Promise(resolve => {
+                  const tempUrl = URL.createObjectURL(item.file);
+                  const tempAudio = document.createElement('audio');
+                  
+                  // Timeout fallback in case format can't be decoded
+                  const timeout = setTimeout(() => {
+                      URL.revokeObjectURL(tempUrl);
+                      resolve();
+                  }, 2000);
+
+                  tempAudio.onloadedmetadata = () => {
+                      clearTimeout(timeout);
+                      item.duration = tempAudio.duration;
+                      URL.revokeObjectURL(tempUrl);
+                      resolve();
+                  };
+                  tempAudio.onerror = () => {
+                      clearTimeout(timeout);
+                      URL.revokeObjectURL(tempUrl);
+                      resolve();
+                  };
+                  tempAudio.src = tempUrl;
+              });
+
+              item.loaded = true;
+              updateSetlistItemDOM(item);
+          }
+
+          // Move to next item without freezing the main thread entirely
+          setTimeout(() => processNextMetadata(index + 1), 10);
+      }
+
+      // -- Custom OBS-Compatible Drag & Drop Logic --
+
+      function onDragEnd(e) {
+          if (!isDragging) return;
+          isDragging = false;
+          
+          // Remove global listeners and UI states
+          document.body.classList.remove('is-dragging');
+          document.removeEventListener('mouseup', onDragEnd);
+
+          document.querySelectorAll('.setlist-item').forEach(i => {
+              i.classList.remove('custom-dragging', 'drag-over-top', 'drag-over-bottom');
+          });
+
+          // Check if we need to move anything
+          if (dragSrcIndex !== null && currentHoverIndex !== null && dragSrcIndex !== currentHoverIndex) {
+              const item = playlistData.splice(dragSrcIndex, 1)[0];
+              playlistData.splice(currentHoverIndex, 0, item);
+
+              // Correct currently playing track pointer
+              if (currentTrackIndex === dragSrcIndex) {
+                  currentTrackIndex = currentHoverIndex;
+              } else if (currentTrackIndex > dragSrcIndex && currentTrackIndex <= currentHoverIndex) {
+                  currentTrackIndex--;
+              } else if (currentTrackIndex < dragSrcIndex && currentTrackIndex >= currentHoverIndex) {
+                  currentTrackIndex++;
+              }
+              renderSetlist();
+          }
+
+          dragSrcIndex = null;
+          currentHoverIndex = null;
+      }
+
+      // Clear hover states if the mouse leaves the container entirely during drag
+      setlistContainer.addEventListener('mouseleave', () => {
+          if (isDragging) {
+              document.querySelectorAll('.setlist-item').forEach(i => i.classList.remove('drag-over-top', 'drag-over-bottom'));
+              currentHoverIndex = null;
+          }
+      });
+
+      function renderSetlist() {
+          setlistContainer.innerHTML = '';
+          playlistData.forEach((item, index) => {
+              const el = document.createElement('div');
+              el.className = `setlist-item ${index === currentTrackIndex ? 'playing' : ''}`;
+              el.id = `setlist-el-${item.id}`;
+              el.style.userSelect = 'none'; // Prevent text selection
+              
+              el.innerHTML = `
+                  <div class="setlist-drag-handle" title="Drag to reorder">☰</div>
+                  <div class="setlist-info">
+                      <div class="setlist-title">${index === currentTrackIndex ? '🎵 ' : ''}${item.title}</div>
+                      <div class="setlist-artist">${item.artist} • ${item.album}</div>
+                  </div>
+                  <div class="setlist-meta">
+                      <div class="setlist-duration">${formatTime(item.duration)}</div>
+                  </div>
+              `;
+              
+              // Click info area to play
+              el.querySelector('.setlist-info').addEventListener('click', () => {
+                  playTrack(index);
+              });
+
+              // Initiate Custom Drag
+              const handle = el.querySelector('.setlist-drag-handle');
+              handle.addEventListener('mousedown', (e) => {
+                  e.preventDefault();
+                  isDragging = true;
+                  dragSrcIndex = index;
+                  el.classList.add('custom-dragging');
+                  document.body.classList.add('is-dragging');
+                  
+                  // Global listener to drop the item
+                  document.addEventListener('mouseup', onDragEnd);
+              });
+
+              // Track hover positioning for the dashed drop-lines
+              el.addEventListener('mousemove', (e) => {
+                  if (!isDragging || dragSrcIndex === null || dragSrcIndex === index) return;
+                  e.preventDefault();
+
+                  // Clear all current lines
+                  document.querySelectorAll('.setlist-item').forEach(i => i.classList.remove('drag-over-top', 'drag-over-bottom'));
+
+                  if (index < dragSrcIndex) {
+                      el.classList.add('drag-over-top');
+                      currentHoverIndex = index;
+                  } else {
+                      el.classList.add('drag-over-bottom');
+                      currentHoverIndex = index;
+                  }
+              });
+
+              setlistContainer.appendChild(el);
+          });
+      }
+
+      function updateSetlistItemDOM(item) {
+          const el = document.getElementById(`setlist-el-${item.id}`);
+          if (!el) return;
+          
+          const index = playlistData.findIndex(i => i.id === item.id);
+          const isPlaying = index === currentTrackIndex;
+          
+          el.querySelector('.setlist-title').textContent = (isPlaying ? '🎵 ' : '') + item.title;
+          el.querySelector('.setlist-artist').textContent = `${item.artist} • ${item.album}`;
+          el.querySelector('.setlist-duration').textContent = formatTime(item.duration);
+      }
+
+      function highlightCurrentTrack() {
+          document.querySelectorAll('.setlist-item').forEach((el, index) => {
+              if (index === currentTrackIndex) {
+                  el.classList.add('playing');
+                  const titleEl = el.querySelector('.setlist-title');
+                  if (!titleEl.textContent.startsWith('🎵 ')) {
+                      titleEl.textContent = '🎵 ' + titleEl.textContent;
+                  }
+                  // Scroll into view
+                  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              } else {
+                  el.classList.remove('playing');
+                  const titleEl = el.querySelector('.setlist-title');
+                  if (titleEl.textContent.startsWith('🎵 ')) {
+                      titleEl.textContent = titleEl.textContent.replace('🎵 ', '');
+                  }
+              }
+          });
+      }
+
+      // -- Custom OBS-Compatible Sorting Dropdown Logic --
+
+      // Toggle visibility of options
+      sortSelectDisplay.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sortSelectItems.classList.toggle('select-hide');
+      });
+
+      // Handle selecting an option
+      sortSelectItems.querySelectorAll('div').forEach(option => {
+          option.addEventListener('click', (e) => {
+              e.stopPropagation();
+              sortSelectDisplay.textContent = option.textContent;
+              sortSelectItems.classList.add('select-hide');
+              
+              const criteria = option.getAttribute('data-value');
+              sortPlaylist(criteria);
+          });
+      });
+
+      // Close dropdown if clicked outside
+      document.addEventListener('click', () => {
+          sortSelectItems.classList.add('select-hide');
+      });
+
+      function sortPlaylist(criteria) {
+          if (playlistData.length === 0) return;
+          
+          const currentPlayingId = currentTrackIndex >= 0 ? playlistData[currentTrackIndex].id : null;
+
+          playlistData.sort((a, b) => {
+              switch (criteria) {
+                  case 'fileName': return a.fileName.localeCompare(b.fileName);
+                  case 'title': return (a.title || '').localeCompare(b.title || '');
+                  case 'artist': return (a.artist || '').localeCompare(b.artist || '');
+                  case 'album': return (a.album || '').localeCompare(b.album || '');
+                  case 'lengthDesc': return (b.duration || 0) - (a.duration || 0);
+                  case 'lengthAsc': return (a.duration || 0) - (b.duration || 0);
+                  case 'dateModDesc': return b.dateModified - a.dateModified;
+                  case 'dateModAsc': return a.dateModified - b.dateModified;
+                  case 'dateCreatedDesc': return b.dateModified - a.dateModified; // Fallback to modified
+                  default: return 0;
+              }
+          });
+
+          // Restore current playing index pointer
+          if (currentPlayingId) {
+              currentTrackIndex = playlistData.findIndex(i => i.id === currentPlayingId);
+          }
+
+          renderSetlist();
+      }
+
+      shuffleSetlistBtn.addEventListener('click', () => {
+          if (playlistData.length < 2) return;
+          
+          const currentPlayingId = currentTrackIndex >= 0 ? playlistData[currentTrackIndex].id : null;
+
+          // Fisher-Yates shuffle
+          for (let i = playlistData.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [playlistData[i], playlistData[j]] = [playlistData[j], playlistData[i]];
+          }
+
+          if (currentPlayingId) {
+              currentTrackIndex = playlistData.findIndex(i => i.id === currentPlayingId);
+          }
+
+          // Reset custom dropdown display
+          sortSelectDisplay.textContent = "Sort by: Original Order";
+          
+          renderSetlist();
+      });
+
+
+      // -- Core Playback Function --
+
+      function playTrack(index) {
+          if (!playlistData || playlistData.length === 0) return;
+          
+          // Loop around logic
+          if (index < 0) index = playlistData.length - 1;
+          if (index >= playlistData.length) index = 0;
+
+          currentTrackIndex = index;
+          const item = playlistData[index];
+
+          // Cleanup previous object URL to prevent memory leaks
+          if (audio.src && audio.src.startsWith('blob:')) {
+              URL.revokeObjectURL(audio.src);
+          }
+          if (currentPictureUrl) {
+              URL.revokeObjectURL(currentPictureUrl);
+              currentPictureUrl = null;
+          }
+
+          // Load audio and play
+          audio.src = URL.createObjectURL(item.file);
+          
+          setupFrom(audio);
+          
+          if (ctx && ctx.state === 'suspended') {
+              ctx.resume();
+          }
+
+          audio.play().then(() => {
+              playBtn.textContent = '⏸';
+              playBtn.setAttribute('title', 'Pause');
+          }).catch(err => {
+              console.error("Playback failed:", err);
+          });
+
+          // Reset Main UI
+          trackTitle.textContent = item.title;
+          trackArtist.textContent = item.artist;
+          trackTitle.title = item.title;
+          trackArtist.title = item.artist;
+          albumArt.style.display = 'none';
+
+          // Extract Album Art explicitly for the current track to keep memory low
+          if (window.jsmediatags) {
+              window.jsmediatags.read(item.file, {
+                  onSuccess: function(tag) {
+                      const picture = tag.tags.picture;
+                      if (picture) {
+                          const byteArray = new Uint8Array(picture.data);
+                          const blob = new Blob([byteArray], { type: picture.format });
+                          currentPictureUrl = URL.createObjectURL(blob);
+                          albumArt.src = currentPictureUrl;
+                          albumArt.style.display = 'block';
+                      }
+                  }
+              });
+          }
+
+          highlightCurrentTrack();
+      }
+
+      // Controls setup
+      playBtn.addEventListener('click', () => {
+          if (!audio.src) return folderInput.click();
+          
+          if (ctx && ctx.state === 'suspended') ctx.resume();
+          
+          if (audio.paused) {
+              audio.play();
+          } else {
+              audio.pause();
+          }
+      });
+
+      prevBtn.addEventListener('click', () => playTrack(currentTrackIndex - 1));
+      nextBtn.addEventListener('click', () => playTrack(currentTrackIndex + 1));
+      
+      // Auto-play next track when one ends
+      audio.addEventListener('ended', () => playTrack(currentTrackIndex + 1));
+
+      // Audio state updates
+      audio.addEventListener('playing', () => {
+          playBtn.textContent = '⏸';
+          playBtn.setAttribute('title', 'Pause');
+      });
+      
+      audio.addEventListener('pause', () => {
+          playBtn.textContent = '▶';
+          playBtn.setAttribute('title', 'Play');
+      });
+
+      if (window.__SIR_AUDIO) {
+          window.__SIR_AUDIO.volume = 0.5;
+          setupFrom(window.__SIR_AUDIO);
+      } else {
+          window.addEventListener('sir-audio-ready', ()=>setupFrom(window.__SIR_AUDIO), {once:true});
+      }
+    })();
+  </script>
+
+  <script>
+    window.addEventListener('load', () => {
+
+      const sensitivityState = {
+        defaults: {
+          ambient: 70,
+          cityscape: 55,
+          darkwave: 90,
+          cityscape2: 55
+        },
+        lastSetValue: {
+          ambient: 70,
+          cityscape: 55,
+          darkwave: 90,
+          cityscape2: 55
+        }
+      };
+
+      function applySensitivity(level) {
+        const slider = document.getElementById('sensitivitySlider');
+        const valueLabel = document.getElementById('sensitivityValue');
+        slider.value = level;
+        valueLabel.textContent = Math.round(level);
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      // ===============================================================
+      // ===== Visualization Mode State & Setup ========================
+      // ===============================================================
+      let currentVizMode = null; 
+      let cityscapeInitialized = false;
+      let darkwaveInitialized = false;
+      let cityscape2Initialized = false;
+
+      let ambientPlane, ambientMaterial;
+      let cityscapeGroup = new THREE.Group();
+      cityscapeGroup.visible = false; 
+
+      let darkwavePlane, darkwaveMaterial;
+
+      // Cityscape 2 Objects
+      let cityscape2Group = new THREE.Group();
+      cityscape2Group.visible = false;
+      let skylineMesh, skylineMaterial;
+      let waveformMesh, waveformMaterial;
+
+      const PROFILES = {
+        ultra: { buildings:300, stars:1400, gridDetail:150, antialiasing:true, pixelRatio:2,   roadWidth:13,  maxHeight:90, starSpeed:10, starSize:1.0, starReact:3.25, gridOpacity:0.32, speedBoost:3.2, pulseStrength:0.75, audioThreshold:0.1015, fogDensity:0.005, cityWidth:250, gridBaseHue: 0.5 },
+        high:  { buildings:200, stars:1200, gridDetail:80,  antialiasing:true, pixelRatio:1.5, roadWidth:13, maxHeight:70, starSpeed:10, starSize:0.7, starReact:2.75, gridOpacity:0.25, speedBoost:2.5, pulseStrength:0.55, audioThreshold:0.1015, fogDensity:0.004, cityWidth:150, gridBaseHue: 0.5 },
+        medium:{ buildings:120, stars:800,  gridDetail:60,  antialiasing:true, pixelRatio:1.2, roadWidth:13, maxHeight:60, starSpeed:10, starSize:0.6, starReact:2.5, gridOpacity:0.22, speedBoost:2.0, pulseStrength:0.45, audioThreshold:0.1015,  fogDensity:0.0030, cityWidth:120, gridBaseHue: 0.5 },
+        low:   { buildings:60,  stars:400,  gridDetail:40,  antialiasing:false,pixelRatio:1.0, roadWidth:13, maxHeight:50, starSpeed:10, starSize:2.0, starReact:1.5, gridOpacity:0.18, speedBoost:1.5, pulseStrength:0.35, audioThreshold:0.1015,  fogDensity:0.0025, cityWidth:100, gridBaseHue: 0.5 },
+        mobile:{ buildings:40,  stars:200,  gridDetail:30,  antialiasing:false,pixelRatio:0.8, roadWidth:13, maxHeight:40, starSpeed:10, starSize:0.4, starReact:1.25, gridOpacity:0.15, speedBoost:1.0, audioThreshold:0.1015,  fogDensity:0.002, cityWidth:80, gridBaseHue: 0.5  }
+      };
+      function autoDetectProfile() {
+        const cores = navigator.hardwareConcurrency || 4;
+        const mem   = navigator.deviceMemory || 4;
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) return 'mobile';
+        if (cores <= 2 || mem <= 2) return 'low';
+        if (cores <= 4 || mem <= 4) return 'medium';
+        if (cores <= 8 || mem <= 8) return 'high';
+        return 'ultra';
+      }
+
+      let settings = { ...PROFILES.high };
+      function applyProfile(name) {
+        if (name === 'auto') name = autoDetectProfile();
+        const p = PROFILES[name] || PROFILES.ultra;
+        settings = { ...p };
+        if (cityscapeInitialized) {
+          applySettings();
+        }
+      }
+
+      let NUM_BUILDINGS = settings.buildings;
+      let ROAD_WIDTH = settings.roadWidth, CITY_WIDTH = settings.cityWidth, CITY_DEPTH = 200;
+      const MIN_H=10, MIN_W=6, MAX_W=14;
+      const BASE_SPEED = 0.55;
+      let PULSE_STRENGTH = settings.pulseStrength;
+      let SPEED_BOOST    = settings.speedBoost;
+      const MAX_FLOORS = 10;
+      const MAX_COLS   = 3;
+      const WINDOW_GUTTER = 0.22;
+      const FRAME_OPACITY = 0.25;
+      let STAR_MOVE_SPEED = settings.starSpeed;
+      let STAR_BASE_SIZE  = settings.starSize;
+      let STAR_SIZE_GAIN  = settings.starReact;
+      const STAR_OPA_BASE   = 0.70;
+      let STAR_OPA_GAIN   = 0.60;
+      let STAR_AUDIO_THRESHOLD = settings.audioThreshold;
+      const GRID_AUDIO_THRESHOLD = 0.03;
+      const STAR_SMOOTHING = 0.25;
+      const GRID_SMOOTHING = 0.20;
+
+      const MOTION_TUNE = 0.18;
+      const STAR_TUNE   = 0.006;
+
+      const SUBWAY_Y = 0.015;
+      const SUBWAY_SPEED = 120;
+      const SUBWAY_LENGTH = 50;
+      const SUBWAY_WIDTH = 3.4;
+      const SUBWAY_GAP = 0.8;
+      let SUBWAY_MAX = 0;
+      const SUBWAY_BASE_OPACITY = 0.4;
+      const SUBWAY_AUDIO_GAIN = 0.8;
+      let subwayTrains = [];
+      let subwayTimer = 0;
+
+      const Z_SUBWAY_SPEED = SUBWAY_SPEED;
+      const Z_SUBWAY_SPAWN_INTERVAL = 5.0;
+      const Z_SUBWAY_BASE_OPACITY = SUBWAY_BASE_OPACITY;
+      const Z_SUBWAY_Y = SUBWAY_Y;
+      const Z_SUBWAY_LANES_X = [-24, 24];
+      const Z_SUBWAY_NEAR_DESPAWN_Z = 120;
+      const Z_SUBWAY_FAR_DESPAWN_Z  = -CITY_DEPTH * 1.2;
+      let zSubwayTrains = [];
+      let zSubwaySpawnTimer = 0;
+
+      const COLORS = { base: { h:0.45, s:1.00, l:0.55 }, bass: { h:0.48, s:1.00, l:0.70 }, mid: { h:0.92, s:1.00, l:0.70 }, high: { h:0.10, s:1.00, l:0.65 } };
+      const WINDOW_BASE_L = 0.003;
+      const WINDOW_LIGHT_DECAY = 0.10;
+
+      function hexToHsl(hex) {
+        let h = hex.replace('#','').trim();
+        if (h.length === 3) h = h.split('').map(c => c + c).join('');
+        const r = parseInt(h.slice(0,2), 16) / 255;
+        const g = parseInt(h.slice(2,4), 16) / 255;
+        const b = parseInt(h.slice(4,6), 16) / 255;
+
+        const max = Math.max(r,g,b), min = Math.min(r,g,b);
+        let hOut, sOut, lOut = (max + min) / 2;
+
+        if (max === min) {
+          hOut = 0; sOut = 0;
+        } else {
+          const d = max - min;
+          sOut = lOut > 0.5 ? d / (2 - max - min) : d / (max + min);
+          switch (max) {
+            case r: hOut = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: hOut = (b - r) / d + 2; break;
+            case b: hOut = (r - g) / d + 4; break;
+          }
+          hOut /= 6;
+        }
+        return [hOut, sOut, lOut];
+      }
+
+      const PALETTE_OFFSETS = [0];
+
+      function updateWindowPalette(baseHue) {
+        const newPalette = PALETTE_OFFSETS.map(offset => {
+          let hue = (baseHue + offset + 1) % 1; 
+          return hue;
+        });
+        window.PALETTE = newPalette; 
+      }
+
+      function updateAllWindowHues() {
+        if (!window.PALETTE) return;
+
+        buildings.forEach(building => {
+          if (building.userData && building.userData.facadePanes) {
+            building.userData.facadePanes.forEach(pane => {
+              if (pane.userData && pane.userData.windows) {
+                pane.userData.windows.forEach(w => {
+                  w.hue = window.PALETTE[0];
+                });
+              }
+            });
+          }
+        });
+      }
+
+      const windowColorInput = document.getElementById('windowColorInput');
+
+      function onWindowColorPick(e) {
+        const hex = e.target.value;
+        const [h, s, l] = hexToHsl(hex);
+        updateWindowPalette(h);
+        window.PALETTE_PICK = { h, s, l };
+        updateAllWindowHues();
+      }
+
+      windowColorInput.addEventListener('input',  onWindowColorPick);
+      windowColorInput.addEventListener('change', onWindowColorPick);
+
+      updateWindowPalette(hexToHsl(windowColorInput.value)[0]);
+      
+      const [h0, s0, l0] = hexToHsl(windowColorInput.value);
+      window.PALETTE_PICK = { h: h0, s: s0, l: l0 };
+      
+      const toRGB = (h, s, l) => {
+        const c = new THREE.Color().setHSL(h, s, l);
+        if (c.convertSRGBToLinear) c.convertSRGBToLinear();
+        return [c.r, c.g, c.b];
+      };
+
+      const canvas = document.getElementById('city');
+      const scene  = new THREE.Scene();
+      scene.fog    = new THREE.FogExp2(0x001414, 0.004); 
+      
+      const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 2200);
+      camera.position.set(0, 35, 10);
+      camera.lookAt(0, 0, -50);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: settings.antialiasing, canvas });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(settings.pixelRatio, window.devicePixelRatio || 1));
+      const clock = new THREE.Clock();
+      
+      scene.add(cityscapeGroup);
+      scene.add(cityscape2Group); // Add new group to scene
+
+      updateDebug('three', 'Scene Ready');
+
+      const horizon = new THREE.Mesh(
+        new THREE.PlaneGeometry(2000, 600),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(0.58, 1, 0.07), transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide })
+      );
+      horizon.position.set(0, 110, -420);
+      cityscapeGroup.add(horizon);
+
+      const sky = new THREE.Group();
+      sky.position.set(0, 110, -750);
+      cityscapeGroup.add(sky);
+
+      let STAR_COUNT = settings.stars;
+      let starGeo, starMat, stars, starPos, starVelocities;
+      function regenerateStars() {
+        if (stars) sky.remove(stars);
+        STAR_COUNT = settings.stars;
+        starGeo = new THREE.BufferGeometry();
+        starPos = new Float32Array(STAR_COUNT * 3);
+        starVelocities = new Float32Array(STAR_COUNT);
+
+        const STAR_FIELD_WIDTH = 8000;
+        const STAR_Y_MIN = -120, STAR_Y_MAX = 160;
+        const STAR_Z_NEAR = -350, STAR_Z_FAR = -1100;
+        for (let i = 0; i < STAR_COUNT; i++) {
+          const i3 = i * 3;
+          starPos[i3 + 0] = (Math.random() * 2 - 1) * STAR_FIELD_WIDTH;
+          starPos[i3 + 1] = STAR_Y_MIN + Math.random() * (STAR_Y_MAX - STAR_Y_MIN);
+          starPos[i3 + 2] = STAR_Z_NEAR - Math.random() * (STAR_Z_FAR - STAR_Z_NEAR);
+          starVelocities[i] = 0.8 + Math.random() * 0.4;
+        }
+
+        starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+
+        starMat = new THREE.PointsMaterial({ color: 0xffffff, size: STAR_BASE_SIZE, sizeAttenuation: false, transparent: true, opacity: STAR_OPA_BASE, depthWrite: false, fog: false, blending: THREE.AdditiveBlending });
+        stars = new THREE.Points(starGeo, starMat);
+        sky.add(stars);
+      }
+
+      function makeSubwayTrain(dir) {
+        dir = (dir === 1 || dir === -1) ? dir : (Math.random() < 0.5 ? 1 : -1);
+        const g = new THREE.Group();
+        const cars = 10;
+        
+        for (let i = 0; i < cars; i++) {
+          const m = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(COLORS.base.h, 1.0, 0.55),
+            transparent: true,
+            opacity: SUBWAY_BASE_OPACITY,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: false,
+            side: THREE.DoubleSide,
+            fog: false
+          });
+
+          const car = new THREE.Mesh(new THREE.PlaneGeometry(SUBWAY_WIDTH, 1.6), m);
+          car.rotation.x = -Math.PI / 2;
+          car.position.set((i * (SUBWAY_WIDTH + SUBWAY_GAP)) * dir, SUBWAY_Y, 0);
+          g.add(car);
+        }
+
+        const NEAR_SPAWN_Z = 140;
+        const FAR_SPAWN_Z  = 900;
+        const zPos = -(NEAR_SPAWN_Z + Math.random() * (FAR_SPAWN_Z - NEAR_SPAWN_Z));
+
+        g.userData = { 
+          dir, 
+          speed: SUBWAY_SPEED, 
+          gridZ: zPos 
+        };
+
+        g.position.set(dir < 0 ? CITY_WIDTH * 0.6 : -CITY_WIDTH * 0.6, 0, zPos);
+        g.renderOrder = 999;
+        return g;
+      }
+
+      function makeZSubwayTrain(dir) {
+        dir = (dir === 1 || dir === -1) ? dir : (Math.random() < 0.5 ? 1 : -1);
+        const g = new THREE.Group();
+        const cars = 10;
+        const carSpacing = 7.5;
+
+        for (let i = 0; i < cars; i++) {
+          const m = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(COLORS.base.h, 1.0, 0.55),
+            transparent: true,
+            opacity: Z_SUBWAY_BASE_OPACITY,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: false,
+            side: THREE.DoubleSide,
+            fog: false
+          });
+          const car = new THREE.Mesh(new THREE.PlaneGeometry(SUBWAY_WIDTH, 1.6), m);
+          car.rotation.x = -Math.PI / 2;
+          car.position.set(0, 0, i * carSpacing * -dir);
+          g.add(car);
+        }
+
+        const laneX = Z_SUBWAY_LANES_X[(Math.random() * Z_SUBWAY_LANES_X.length) | 0];
+        const NEAR_SPAWN_Z = 140;
+        const FAR_SPAWN_Z  = 900;
+        const zPos = -(NEAR_SPAWN_Z + Math.random() * (FAR_SPAWN_Z - NEAR_SPAWN_Z));
+
+        g.position.set(laneX, Z_SUBWAY_Y, zPos);
+        g.userData = { dir, speed: Z_SUBWAY_SPEED };
+        g.renderOrder = 999;
+        return g;
+      }
+
+      window.__makeSubwayTrain = makeSubwayTrain;
+      window.__makeZSubwayTrain = makeZSubwayTrain;
+
+      const GROUND_SIZE = 600;
+      let GROUND_DIVS = settings.gridDetail;
+      const GROUND_TILES = 7;
+      let groundTiles = [];
+      function updateGroundGrid() {
+        groundTiles.forEach(tile => cityscapeGroup.remove(tile.mesh));
+        groundTiles = [];
+        GROUND_DIVS = settings.gridDetail;
+
+        for (let i = 0; i < GROUND_TILES; i++) {
+          const g = new THREE.GridHelper(GROUND_SIZE, GROUND_DIVS, 0x00a0a0, 0x00a0a0);
+          g.position.set(0, 0.02, -i * GROUND_SIZE);
+          const mats = Array.isArray(g.material) ? g.material : [g.material];
+          mats.forEach(m => { m.transparent = true; m.opacity = settings.gridOpacity; m.depthWrite = true; m.fog = false; });
+          cityscapeGroup.add(g);
+          groundTiles.push({ mesh: g, mats });
+        }
+      }
+
+      function disposeBuilding(building) {
+        building.traverse(object => {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        });
+        cityscapeGroup.remove(building);
+      }
+
+      const buildings = [];
+      const BANDS = ['bass','mid','high'];
+      let nextBackZ = null;
+      function regenerateBuildings() {
+        while (buildings.length > 0) {
+          const building = buildings.pop();
+          disposeBuilding(building);
+        }
+
+        for (let i = 0; i < NUM_BUILDINGS; i++) {
+          const g = new THREE.Group();
+          resetBuilding(g, true);
+          cityscapeGroup.add(g);
+          buildings.push(g);
+        }
+      }
+
+      function applySettings() {
+        STAR_MOVE_SPEED = settings.starSpeed;
+        STAR_BASE_SIZE  = settings.starSize;
+        STAR_SIZE_GAIN  = settings.starReact;
+        STAR_AUDIO_THRESHOLD = settings.audioThreshold;
+        SPEED_BOOST     = settings.speedBoost;
+        PULSE_STRENGTH  = settings.pulseStrength;
+        ROAD_WIDTH      = settings.roadWidth;
+        CITY_WIDTH      = settings.cityWidth;
+        NUM_BUILDINGS   = settings.buildings;
+
+        renderer.setPixelRatio(Math.min(settings.pixelRatio, window.devicePixelRatio || 1));
+        if (starMat) starMat.size = STAR_BASE_SIZE;
+        if (scene.fog) scene.fog.density = settings.fogDensity;
+
+        if (!stars || settings.stars !== STAR_COUNT) regenerateStars();
+        updateGroundGrid();
+        regenerateBuildings();
+      }
+
+      let zTail = -(GROUND_TILES - 1) * GROUND_SIZE;
+      const edgeMatProto = new THREE.LineBasicMaterial({ color: new THREE.Color().setHSL(COLORS.base.h, COLORS.base.s, COLORS.base.l), transparent: true, opacity: 0.9 });
+      const frameMatProto = new THREE.LineBasicMaterial({ color: new THREE.Color().setHSL(COLORS.base.h, COLORS.base.s, COLORS.base.l), transparent: true, opacity: FRAME_OPACITY });
+      const paneMatProto = new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.99,
+          depthWrite: true,
+          side: THREE.DoubleSide,
+          toneMapped: false
+        });
+
+      function pushRectLines(verts, x0,y0,x1,y1,z){ verts.push( x0,y1,z,  x1,y1,z,  x1,y1,z,  x1,y0,z,  x1,y0,z,  x0,y0,z,  x0,y0,z,  x0,y1,z ); }
+      function pushPaneXY(verts, colors, x0,y0,x1,y1,z, rgb){
+        const zOff = z > 0 ? z + 0.001 : z - 0.001;
+        verts.push( x0,y0,zOff,  x1,y0,zOff,  x1,y1,zOff,  x0,y0,zOff,  x1,y1,zOff,  x0,y1,zOff );
+        for (let i=0;i<6;i++) colors.push(...rgb);
+      }
+      function pushPaneZY(verts, colors, y0,z0,y1,z1,x, rgb){
+        const xOff = x > 0 ? x + 0.001 : x - 0.001;
+        verts.push( xOff,y0,z0,  xOff,y0,z1,  xOff,y1,z1,  xOff,y0,z0,  xOff,y1,z1,  xOff,y1,z0 );
+        for (let i=0;i<6;i++) colors.push(...rgb);
+      }
+      function buildFacadeXY(width, height, cols, floors, z, baseRGB){
+        const fVerts = [], pVerts = [], pColors = [], windows = [];
+        const dx=width/cols, dy=height/floors;
+        const ix=dx*WINDOW_GUTTER*0.5, iy=dy*WINDOW_GUTTER*0.5;
+        for(let c=0;c<cols;c++){
+          const cx0=-width/2+c*dx, cx1=cx0+dx;
+          for(let r=0;r<floors;r++){
+            const cy0=-height/2+r*dy, cy1=cy0+dy;
+            const x0=cx0+ix, x1=cx1-ix, y0=cy0+iy, y1=cy1-iy;
+            pushRectLines(fVerts, x0,y0,x1,y1,z);
+            const start = pVerts.length/3;
+            pushPaneXY(pVerts, pColors, x0,y0,x1,y1,z, baseRGB);
+            const count = (pVerts.length/3) - start;
+            const hue  = window.PALETTE[0];
+            const sat  = 0.90 + Math.random()*0.10;
+            const litL = 0.70 + Math.random()*0.15;
+            windows.push({ start, count, bright:0, hue, sat, litL });
+          }
+        }
+        const frames = new THREE.LineSegments( new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(fVerts,3)), frameMatProto.clone() );
+        const panesG = new THREE.BufferGeometry();
+        panesG.setAttribute('position', new THREE.Float32BufferAttribute(pVerts,3));
+        panesG.setAttribute('color',    new THREE.Float32BufferAttribute(pColors,3));
+        const panes = new THREE.Mesh(panesG, paneMatProto.clone());
+        panes.userData.windows = windows;
+        return { frames, panes };
+      }
+      function buildFacadeZY(depth, height, cols, floors, x, baseRGB){
+        const fVerts = [], pVerts = [], pColors = [], windows = [];
+        const dz=depth/cols, dy=height/floors;
+        const iz=dz*WINDOW_GUTTER*0.5, iy=dy*WINDOW_GUTTER*0.5;
+        for(let c=0;c<cols;c++){
+          const cz0=-depth/2+c*dz, cz1=cz0+dz;
+          for(let r=0;r<floors;r++){
+            const cy0=-height/2+r*dy, cy1=cy0+dy;
+            const z0=cz0+iz, z1=cz1-iz, y0=cy0+iy, y1=cy1-iy;
+            fVerts.push(x,y1,z0,  x,y1,z1,  x,y1,z1,  x,y0,z1, x,y0,z1,  x,y0,z0,  x,y0,z0,  x,y1,z0);
+            const start = pVerts.length/3;
+            pushPaneZY(pVerts, pColors, y0,z0,y1,z1,x, baseRGB);
+            const count = (pVerts.length/3) - start;
+            const hue  = window.PALETTE[0]; 
+            const sat  = 0.85 + Math.random()*0.10;
+            const litL = 0.85 + Math.random()*0.15;
+            windows.push({ start, count, bright:0, hue, sat, litL });
+          }
+        }
+        const frames = new THREE.LineSegments( new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(fVerts,3)), frameMatProto.clone() );
+        const panesG = new THREE.BufferGeometry();
+        panesG.setAttribute('position', new THREE.Float32BufferAttribute(pVerts,3));
+        panesG.setAttribute('color',    new THREE.Float32BufferAttribute(pColors,3));
+        const panes = new THREE.Mesh(panesG, paneMatProto.clone());
+        panes.userData.windows = windows;
+        return { frames, panes };
+      }
+
+      function makeTower(width, height, depth, floors, cols, side) {
+        const group = new THREE.Group();
+        const baseHue = Math.random();
+        const baseRGB = toRGB(baseHue, COLORS.base.s, WINDOW_BASE_L);
+
+        const edgesGeo = new THREE.BoxGeometry(width, height, depth);
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(edgesGeo), edgeMatProto.clone());
+        edges.material.depthWrite = false;
+        edges.renderOrder = 3;
+        group.add(edges);
+
+        const f = Math.min(floors, MAX_FLOORS);
+        const c = Math.min(cols,   MAX_COLS);
+
+        const F = buildFacadeXY(width, height, c, f, depth/2, baseRGB);
+        F.panes.renderOrder  = 1;
+        F.frames.renderOrder = 2;
+        group.add(F.frames, F.panes);
+
+        const facadePanes = [F.panes];
+        if (side === -1) {
+          const R = buildFacadeZY(depth, height, c, f,  width/2, baseRGB);
+          R.panes.renderOrder  = 1;
+          R.frames.renderOrder = 2;
+          group.add(R.frames, R.panes);
+          facadePanes.push(R.panes);
+        } else {
+          const L = buildFacadeZY(depth, height, c, f, -width/2, baseRGB);
+          L.panes.renderOrder  = 1;
+          L.frames.renderOrder = 2;
+          group.add(L.frames, L.panes);
+          facadePanes.push(L.panes);
+        }
+
+        const roofGeo = new THREE.PlaneGeometry(width, depth);
+        const roofMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setRGB(...baseRGB),
+          transparent: true,
+          opacity: 0.99,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          depthTest: false
+        });
+        const roof = new THREE.Mesh(roofGeo, roofMat);
+        roof.rotation.x = -Math.PI / 2;
+        roof.position.y = height / 2;
+        group.add(roof);
+
+        const randHue = Math.random();
+        group.children.forEach(child => {
+          if (child.material && child.material.isLineBasicMaterial) {
+            child.material.color.setHSL(randHue, 0.4, 0.45);
+          }
+        });
+
+        group.userData.facadePanes = facadePanes;
+        group.userData.edgeMat = edges.material;
+        group.userData.baseHue = baseHue;
+
+        return group;
+      }
+
+      function resetBuilding(group, initial=false) {
+        const side = Math.random() < 0.5 ? -1 : 1;
+
+        const SAFE_NEAR = 120;
+        const FAR_RANGE = CITY_DEPTH * 8;
+
+        let z;
+        if (initial) {
+          z = -(SAFE_NEAR + Math.random() * (FAR_RANGE - SAFE_NEAR));
+        } else {
+          if (nextBackZ === null) {
+            nextBackZ = Math.min(...buildings.map(b => b.position.z));
+          }
+          z = nextBackZ - (Math.random() * 15 + 15);
+          nextBackZ = z;
+        }
+
+        const w = MIN_W + Math.random() * (MAX_W - MIN_W);
+        const h = MIN_H + Math.random() * (settings.maxHeight - MIN_H);
+        const d = MIN_W + Math.random() * (MAX_W - MIN_W);
+        const floors = Math.max(3, Math.round(h / 3));
+        const cols   = Math.max(3, Math.round(w / 2));
+
+        group.clear();
+        const tower = makeTower(w, h, d, floors, cols, side);
+        group.add(tower);
+        group.userData.mesh = tower;
+        group.userData.facadePanes = tower.userData.facadePanes;
+        group.userData.baseHue = tower.userData.baseHue;
+        group.userData.baseH = h;
+        group.userData.width = w;
+        if (!group.userData.band) group.userData.band = BANDS[buildings.length % BANDS.length];
+
+        const inner = ROAD_WIDTH / 2;
+        const outer = CITY_WIDTH / 2;
+        const LANES = 4;
+        const laneIndex = (Math.random() * LANES) | 0;
+        const t = (laneIndex + 0.5) / LANES;
+        const laneXAbs = inner + t * (outer - inner);
+        const JITTER = 0.8;
+        const MAX_TRIES = 10;
+
+        let x, tries = 0;
+        while (true) {
+          const jitter = (Math.random() - 0.5) * JITTER;
+          x = side * (laneXAbs + jitter);
+          const ok = !buildings.some(b => {
+            if (b === group) return false;
+            const dz = Math.abs(b.position.z - z);
+            if (dz > 14) return false;
+            const bw = (b.userData && b.userData.width) || 10;
+            return Math.abs(x - b.position.x) < ((w + bw) * 0.52);
+          });
+          if (ok || ++tries >= MAX_TRIES) break;
+        }
+
+        group.position.set(x, h / 2, z);
+      }
+      
+      const clamp = (v,lo,hi)=> Math.max(lo, Math.min(hi, v));
+      const avg = u8 => { let s=0; for(let i=0;i<u8.length;i++) s+=u8[i]; return (s/u8.length)/255; };
+
+      let starReactSmooth = 0;
+      let gridReactSmooth = 0;
+      let currentProfile = 'high';
+
+      let indicatorTimeout;
+
+      function showIndicator(text) {
+        const indicator = document.getElementById('changeIndicator');
+        indicator.textContent = text;
+        indicator.classList.add('visible');
+        clearTimeout(indicatorTimeout);
+        indicatorTimeout = setTimeout(() => {
+          indicator.classList.remove('visible');
+        }, 1500);
+      }
+      
+      /* ===== Control & Color Panel Logic ===== */
+      const controlPanel = document.getElementById('controlPanel');
+      const setlistPanel = document.getElementById('setlistPanel');
+      const profileButtons = document.querySelectorAll('.profile-btn[data-profile]');
+      const modeButtons = document.querySelectorAll('.profile-btn[data-mode]');
+      const controlsBtn = document.getElementById('controlsBtn');
+      const setlistBtn = document.getElementById('setlistBtn');
+      const closePanelBtn = document.getElementById('closePanelBtn');
+      const closeSetlistPanelBtn = document.getElementById('closeSetlistPanelBtn');
+      const colorBtn = document.getElementById('colorBtn');
+      const colorPanel = document.getElementById('colorPanel');
+      const closeColorPanelBtn = document.getElementById('closeColorPanelBtn');
+
+      if (controlsBtn) {
+        controlsBtn.addEventListener('click', () => {
+            if (colorPanel) colorPanel.classList.remove('visible');
+            if (setlistPanel) setlistPanel.classList.remove('visible');
+            if (controlPanel) controlPanel.classList.toggle('visible');
+        });
+      }
+      
+      if (setlistBtn) {
+        setlistBtn.addEventListener('click', () => {
+            if (controlPanel) controlPanel.classList.remove('visible');
+            if (colorPanel) colorPanel.classList.remove('visible');
+            if (setlistPanel) setlistPanel.classList.toggle('visible');
+        });
+      }
+
+      if (closePanelBtn) {
+        closePanelBtn.addEventListener('click', () => {
+            if (controlPanel) controlPanel.classList.remove('visible');
+        });
+      }
+      
+      if (closeSetlistPanelBtn) {
+        closeSetlistPanelBtn.addEventListener('click', () => {
+            if (setlistPanel) setlistPanel.classList.remove('visible');
+        });
+      }
+
+      if (colorBtn) {
+          colorBtn.addEventListener('click', () => {
+            if (controlPanel) controlPanel.classList.remove('visible');
+            if (setlistPanel) setlistPanel.classList.remove('visible');
+            if (colorPanel) colorPanel.classList.toggle('visible');
+          });
+      }
+
+      if (closeColorPanelBtn) {
+          closeColorPanelBtn.addEventListener('click', () => {
+            if (colorPanel) colorPanel.classList.remove('visible');
+          });
+      }
+
+      function makeDraggable(element, handle) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+        const dragMouseDown = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          pos3 = e.clientX;
+          pos4 = e.clientY;
+          document.onmouseup = closeDragElement;
+          document.onmousemove = elementDrag;
+          handle.style.cursor = 'grabbing';
+        };
+
+        const elementDrag = (e) => {
+          e.preventDefault();
+          pos1 = pos3 - e.clientX;
+          pos2 = pos4 - e.clientY;
+          pos3 = e.clientX;
+          pos4 = e.clientY;
+          element.style.top = (element.offsetTop - pos2) + "px";
+          element.style.left = (element.offsetLeft - pos1) + "px";
+        };
+
+        const closeDragElement = () => {
+          document.onmouseup = null;
+          document.onmousemove = null;
+          handle.style.cursor = 'grab';
+        };
+
+        handle.style.cursor = 'grab';
+        handle.onmousedown = dragMouseDown;
+      }
+
+      makeDraggable(controlPanel, controlPanel.querySelector('h2'));
+      makeDraggable(colorPanel, colorPanel.querySelector('h2'));
+
+      document.addEventListener('keydown', (e) => {
+        if (e.shiftKey && e.code === 'KeyC') {
+          e.preventDefault();
+          controlPanel.classList.toggle('visible');
+        }
+        if (e.code === 'Escape') {
+          controlPanel.classList.remove('visible');
+          colorPanel.classList.remove('visible');
+          setlistPanel.classList.remove('visible');
+        }
+        
+        if (e.shiftKey && e.code === 'KeyD') {
+          e.preventDefault();
+          const debugPanel = document.getElementById('debug');
+          debugPanel.style.display = debugPanel.style.display === 'none' || debugPanel.style.display === '' ? 'block' : 'none';
+        }
+
+        const sensitivitySlider = document.getElementById('sensitivitySlider');
+        const profileButtons = document.querySelectorAll('.profile-btn[data-profile]');
+        const profileOrder = Array.from(profileButtons).map(btn => btn.dataset.profile);
+        const currentIndex = profileOrder.indexOf(currentProfile);
+
+        switch (e.key) {
+          case 'ArrowUp': {
+            e.preventDefault();
+            const audioEl = window.__SIR_AUDIO;
+            if (e.shiftKey) {
+                audioEl.volume = Math.min(1, audioEl.volume + 0.05);
+                const newVolume = Math.round(audioEl.volume * 100);
+                showIndicator(`Volume: ${newVolume}%`);
+                volumeSlider.value = newVolume;
+                volumeValue.textContent = newVolume;
+            } else {
+              sensitivitySlider.stepUp(1);
+              sensitivitySlider.dispatchEvent(new Event('input'));
+              showIndicator(`Sensitivity: ${sensitivitySlider.value}`);
+            }
+            break;
+          }
+          case 'ArrowDown': {
+            e.preventDefault();
+            const audioEl = window.__SIR_AUDIO;
+            if (e.shiftKey) {
+                audioEl.volume = Math.max(0, audioEl.volume - 0.05);
+                const newVolume = Math.round(audioEl.volume * 100);
+                showIndicator(`Volume: ${newVolume}%`);
+                volumeSlider.value = newVolume;
+                volumeValue.textContent = newVolume;
+            } else {
+              sensitivitySlider.stepDown(1);
+              sensitivitySlider.dispatchEvent(new Event('input'));
+              showIndicator(`Sensitivity: ${sensitivitySlider.value}`);
+            }
+            break;
+          }
+
+          case 'ArrowRight': {
+            e.preventDefault();
+            if (currentVizMode === 'cityscape') {
+              const nextIndex = (currentIndex + 1) % profileOrder.length;
+              const nextProfile = profileOrder[nextIndex];
+              const displayName = nextProfile.charAt(0).toUpperCase() + nextProfile.slice(1);
+              document.querySelector(`.profile-btn[data-profile="${nextProfile}"]`).click();
+              showIndicator(`${displayName}`);
+            } else if (currentVizMode === 'ambient') {
+              const paletteButtonsNodeList = document.querySelectorAll('.ambient-color-settings .profile-btn');
+              const paletteButtons = Array.from(paletteButtonsNodeList);
+              const currentPaletteIndex = paletteButtons.findIndex(btn => btn.classList.contains('active'));
+              const nextPaletteIndex = (currentPaletteIndex + 1) % paletteButtons.length;
+              const nextButton = paletteButtons[nextPaletteIndex];
+              
+              showIndicator(`Palette: ${nextButton.textContent}`);
+              nextButton.click();
+            }
+            break;
+          }
+            
+          case 'ArrowLeft': {
+            e.preventDefault();
+            if (currentVizMode === 'cityscape') {
+              const nextIndex = (currentIndex - 1 + profileOrder.length) % profileOrder.length;
+              const nextProfile = profileOrder[nextIndex];
+              const displayName = nextProfile.charAt(0).toUpperCase() + nextProfile.slice(1);
+              document.querySelector(`.profile-btn[data-profile="${nextProfile}"]`).click();
+              showIndicator(`${displayName}`);
+            } else if (currentVizMode === 'ambient') {
+              const paletteButtonsNodeList = document.querySelectorAll('.ambient-color-settings .profile-btn');
+              const paletteButtons = Array.from(paletteButtonsNodeList);
+              const currentPaletteIndex = paletteButtons.findIndex(btn => btn.classList.contains('active'));
+              const prevPaletteIndex = (currentPaletteIndex - 1 + paletteButtons.length) % paletteButtons.length;
+              const prevButton = paletteButtons[prevPaletteIndex];
+
+              showIndicator(`Palette: ${prevButton.textContent}`);
+              prevButton.click();
+            }
+            break;
+          }
+        }
+      });
+
+            modeButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const mode = btn.dataset.mode;
+                    if (mode === currentVizMode) return;
+                    currentVizMode = mode;
+
+                    modeButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    switchVisualizationMode(mode);
+                });
+            });
+
+            // Mode Select Welcome Modal Buttons
+            document.querySelectorAll('.mode-select-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const mode = btn.dataset.mode;
+                    document.getElementById('welcomePanel').style.display = 'none';
+
+                    // Update UI active state in main panel
+                    modeButtons.forEach(b => {
+                        if (b.dataset.mode === mode) {
+                            b.classList.add('active');
+                        } else {
+                            b.classList.remove('active');
+                        }
+                    });
+                    
+                    currentVizMode = mode;
+
+                    // Initialize and switch
+                    if (mode === 'ambient') initAmbientMode();
+                    else if (mode === 'cityscape') initCityScapeMode();
+                    else if (mode === 'darkwave') initDarkwaveMode();
+                    else if (mode === 'cityscape2') initCityscape2Mode();
+                    
+                    switchVisualizationMode(mode);
+
+                    // Optional automatic resume if context isn't suspended
+                    if (typeof ctx !== 'undefined' && ctx && ctx.state === 'suspended') {
+                        ctx.resume();
+                    } else if (typeof ctx === 'undefined') {
+                        try {
+                            const AudioContext = window.AudioContext || window.webkitAudioContext;
+                            ctx = new AudioContext();
+                        } catch(e) { console.error("Audio Context Init Fail", e); }
+                    }
+                });
+            });
+
+            profileButtons.forEach(btn => {
+              btn.addEventListener('click', () => {
+                const profile = btn.dataset.profile;
+                currentProfile = profile;
+                applyProfile(profile);
+
+                profileButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                updateSlidersFromSettings();
+                updateDebug('settings', `Profile: ${profile}`);
+              });
+            });
+
+
+            // Slider controls
+            const sensitivityValue = document.getElementById('sensitivityValue');
+            const speedValue = document.getElementById('speedValue');
+            const starValue = document.getElementById('starValue');
+            const buildingValue = document.getElementById('buildingValue'); 
+            const starValueDisplay = document.getElementById('starValueDisplay'); 
+            const maxHeightValue = document.getElementById('maxHeightValue');
+            const cityWidthValue = document.getElementById('cityWidthValue');
+            const fogDensityValue = document.getElementById('fogDensityValue');
+            const orbSizeSlider = document.getElementById('orbSizeSlider');
+            const orbSizeValue = document.getElementById('orbSizeValue');
+            const blobSpeedSlider = document.getElementById('blobSpeedSlider');
+            const blobSpeedValue = document.getElementById('blobSpeedValue');
+            const hueSpeedSlider = document.getElementById('hueSpeedSlider');
+            const hueSpeedValue = document.getElementById('hueSpeedValue');
+            const edgeSharpnessSlider = document.getElementById('edgeSharpnessSlider');
+            const edgeSharpnessValue  = document.getElementById('edgeSharpnessValue');
+            const volumeSlider = document.getElementById('volumeSlider');
+            const volumeValue = document.getElementById('volumeValue');
+            const waveHeightSlider = document.getElementById('waveHeightSlider');
+            const waveHeightValue = document.getElementById('waveHeightValue');
+            const simSpeedSlider = document.getElementById('simSpeedSlider');
+            const simSpeedValue = document.getElementById('simSpeedValue');
+            
+            const city2CycleSpeedSlider = document.getElementById('city2CycleSpeedSlider');
+            const city2CycleSpeedValue = document.getElementById('city2CycleSpeedValue');
+            let city2CycleSpeed = 5;
+            let city2Hue = 0;
+
+            city2CycleSpeedSlider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value, 10);
+                city2CycleSpeed = val;
+                city2CycleSpeedValue.textContent = val;
+            });
+
+            function updateSlidersFromSettings() {
+                const thresholdMax = 0.2;
+                const thresholdMin = 0.001;
+                const currentThreshold = settings.audioThreshold;
+                const t = (thresholdMax - currentThreshold) / (thresholdMax - thresholdMin);
+                const sensitivityLevel = Math.max(1, Math.min(100, t * 99 + 1));
+
+                sensitivitySlider.value = sensitivityLevel;
+                speedSlider.value = settings.speedBoost;
+                starSlider.value = settings.starReact;
+                buildingSlider.value = settings.buildings;      
+                starSliderDisplay.value = settings.stars; 
+                maxHeightSlider.value = settings.maxHeight; 
+                cityWidthSlider.value = settings.cityWidth; 
+                fogDensitySlider.value = settings.fogDensity;    
+
+                sensitivityValue.textContent = Math.round(sensitivityLevel);
+                speedValue.textContent = settings.speedBoost;
+                starValue.textContent = settings.starReact;
+                buildingValue.textContent = settings.buildings;  
+                starValueDisplay.textContent = settings.stars; 
+                maxHeightValue.textContent = settings.maxHeight;
+                cityWidthValue.textContent = settings.cityWidth;  
+                fogDensityValue.textContent = settings.fogDensity.toFixed(4);
+            }
+
+            volumeSlider.addEventListener('input', (e) => {
+              const value = parseInt(e.target.value, 10);
+              const audioEl = window.__SIR_AUDIO;
+              if (audioEl) {
+                audioEl.volume = value / 100;
+              }
+              volumeValue.textContent = value;
+            });
+
+            sensitivitySlider.addEventListener('input', (e) => {
+                const sensitivityLevel = parseFloat(e.target.value);
+                const thresholdMax = 0.2;
+                const thresholdMin = 0.001;
+                const t = (sensitivityLevel - 1) / 99;
+                const newThreshold = thresholdMax - t * (thresholdMax - thresholdMin);
+                settings.audioThreshold = newThreshold;
+                STAR_AUDIO_THRESHOLD = newThreshold;
+                sensitivityValue.textContent = Math.round(sensitivityLevel);
+                sensitivityState.lastSetValue[currentVizMode] = sensitivityLevel;
+            });
+
+            speedSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              settings.speedBoost = value;
+              SPEED_BOOST = value;
+              speedValue.textContent = value;
+            });
+
+            starSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              settings.starReact = value;
+              STAR_SIZE_GAIN = value;
+              starValue.textContent = value;
+            });
+
+            buildingSlider.addEventListener('input', (e) => {
+              const value = parseInt(e.target.value, 10);
+              settings.buildings = value;
+              NUM_BUILDINGS = value;
+              regenerateBuildings();
+            });
+
+            starSliderDisplay.addEventListener('input', (e) => {
+              const value = parseInt(e.target.value, 10);
+              settings.stars = value;
+              STAR_COUNT = value;
+              starValueDisplay.textContent = value;
+              regenerateStars();
+            });
+
+            maxHeightSlider.addEventListener('input', (e) => {
+              const value = parseInt(e.target.value, 10);
+              settings.maxHeight = value;
+              maxHeightValue.textContent = value;
+              regenerateBuildings();
+            });
+
+            cityWidthSlider.addEventListener('input', (e) => {
+              const value = parseInt(e.target.value, 10);
+              settings.cityWidth = value;
+              CITY_WIDTH = value;
+              cityWidthValue.textContent = value;
+              regenerateBuildings();
+            });
+
+            fogDensitySlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              settings.fogDensity = value;
+              fogDensityValue.textContent = value.toFixed(4);
+            });
+            
+            orbSizeSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              if (ambientMaterial) {
+                ambientMaterial.uniforms.u_baseR.value = value;
+              }
+              orbSizeValue.textContent = value.toFixed(2);
+            });
+
+            let maxBlobSpeed = parseFloat(blobSpeedSlider.value);
+            let maxHueSpeed = parseFloat(hueSpeedSlider.value);
+            let waveHeight = parseFloat(waveHeightSlider.value);
+            let simSpeed = parseFloat(simSpeedSlider.value);
+
+            blobSpeedSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              maxBlobSpeed = value;
+              blobSpeedValue.textContent = value.toFixed(3);
+            });
+
+            hueSpeedSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              maxHueSpeed = value;
+              hueSpeedValue.textContent = value.toFixed(2);
+            });
+
+
+            edgeSharpnessSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              if (ambientMaterial) {
+                ambientMaterial.uniforms.u_edge_sharpness.value = value;
+              }
+              edgeSharpnessValue.textContent = value.toFixed(2);
+            });
+
+            const blobMovementSpeedSlider = document.getElementById('blobMovementSpeedSlider');
+            const blobMovementSpeedValue = document.getElementById('blobMovementSpeedValue');
+            blobMovementSpeedSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              if (ambientMaterial) {
+                ambientMaterial.uniforms.u_movement_speed.value = value;
+              }
+              blobMovementSpeedValue.textContent = value.toFixed(3);
+            });
+
+            const flowSpeedSlider = document.getElementById('flowSpeedSlider');
+            const flowSpeedValue = document.getElementById('flowSpeedValue');
+            flowSpeedSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              if (darkwaveMaterial) darkwaveMaterial.uniforms.u_flow_speed.value = value;
+              flowSpeedValue.textContent = value.toFixed(2);
+            });
+            
+            const distortionSlider = document.getElementById('distortionSlider');
+            const distortionValue = document.getElementById('distortionValue');
+            distortionSlider.addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value);
+              if (darkwaveMaterial) darkwaveMaterial.uniforms.u_distortion.value = value;
+              distortionValue.textContent = value.toFixed(2);
+            });
+            
+            waveHeightSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                waveHeight = value;
+                if(waveformMaterial) waveformMaterial.uniforms.u_wave_height.value = value;
+                waveHeightValue.textContent = value.toFixed(1);
+            });
+
+            simSpeedSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                simSpeed = value;
+                simSpeedValue.textContent = value.toFixed(2);
+            });
+
+            // Darkwave Color Picker Listener
+            const darkwaveColorInput = document.getElementById('darkwaveColorInput');
+            darkwaveColorInput.addEventListener('input', (e) => {
+                if (darkwaveMaterial) {
+                    darkwaveMaterial.uniforms.u_color.value.set(e.target.value);
+                }
+            });
+
+            // Cityscape 2 Color Inputs
+            const skylineColorInput = document.getElementById('skylineColorInput');
+            skylineColorInput.addEventListener('input', (e) => {
+                if(skylineMaterial) skylineMaterial.uniforms.u_color.value.set(e.target.value);
+            });
+
+            const waveformColorInput = document.getElementById('waveformColorInput');
+            waveformColorInput.addEventListener('input', (e) => {
+                if(waveformMaterial) waveformMaterial.uniforms.u_color.value.set(e.target.value);
+            });
+
+
+            const enableSubways = document.getElementById('enableSubways');
+            enableSubways.addEventListener('change', (e) => {
+              const isEnabled = e.target.checked;
+              SUBWAY_MAX = isEnabled ? 30 : 0;
+              console.log('Subways', isEnabled ? 'enabled' : 'disabled');
+            });
+
+            const AMBIENT_PALETTES = {
+                vibrant: [
+                    new THREE.Color(0.98, 0.32, 0.18), new THREE.Color(0.98, 0.85, 0.20),
+                    new THREE.Color(0.45, 0.86, 0.95), new THREE.Color(0.72, 0.45, 0.95)
+                ],
+                pastel: [
+                    new THREE.Color("#ffdfba"), new THREE.Color("#baffc9"),
+                    new THREE.Color("#ffb3ba"), new THREE.Color("#ffffba")
+                ],
+                dark: [
+                    new THREE.Color(0.2, 0.2, 0.2), new THREE.Color(0.5, 0.5, 0.5),
+                    new THREE.Color(0.8, 0.8, 0.8), new THREE.Color(0.35, 0.35, 0.35)
+                ],
+                greyscale: [
+                    new THREE.Color(0.25, 0.25, 0.25), new THREE.Color(0.85, 0.85, 0.85),
+                    new THREE.Color(0.50, 0.50, 0.50), new THREE.Color(0.70, 0.70, 0.70)
+                ]
+            };
+
+            const paletteButtons = document.querySelectorAll('.ambient-color-settings .profile-btn');
+            paletteButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    paletteButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const paletteName = btn.dataset.palette;
+                    const colors = AMBIENT_PALETTES[paletteName];
+                    const hueSpeedSlider = document.getElementById('hueSpeedSlider');
+                    if (paletteName === 'greyscale') {
+                        ambientMaterial.uniforms.u_hue_speed.value = 0.0;
+                    } else {
+                        ambientMaterial.uniforms.u_hue_speed.value = parseFloat(hueSpeedSlider.value);
+                    }
+                    if (ambientMaterial && colors) {
+                        ambientMaterial.uniforms.u_colorA.value.copy(colors[0]);
+                        ambientMaterial.uniforms.u_colorB.value.copy(colors[1]);
+                        ambientMaterial.uniforms.u_colorC.value.copy(colors[2]);
+                        ambientMaterial.uniforms.u_colorD.value.copy(colors[3]);
+                        ambientMaterial.uniforms.u_apply_hue_shift.value = (paletteName === 'greyscale') ? 0.0 : 1.0;
+                    }
+                });
+            });
+
+
+            updateSlidersFromSettings();
+
+        function initAmbientMode() {
+                const ambientGeo = new THREE.PlaneGeometry(2, 2);
+                ambientMaterial = new THREE.ShaderMaterial({
+                  uniforms: {
+                    u_time: { value: 0.0 },
+                    u_resolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+                    u_bass: { value: 0.0 },
+                    u_mid: { value: 0.0 },
+                    u_high: { value: 0.0 },
+                    u_baseR: { value: 1.90 },
+                    u_blob_speed: { value: 0.060 },
+                    u_movement_speed: { value: 0.060 },
+                    u_hue_speed: { value: 0.18 },
+                    u_edge_sharpness: { value: 0.65 },
+                    u_apply_hue_shift: { value: 1.0 },
+                    u_colorA: { value: AMBIENT_PALETTES.pastel[0].clone() },
+                    u_colorB: { value: AMBIENT_PALETTES.pastel[1].clone() },
+                    u_colorC: { value: AMBIENT_PALETTES.pastel[2].clone() },
+                    u_colorD: { value: AMBIENT_PALETTES.pastel[3].clone() }
+                  },
+                  vertexShader: document.getElementById('vertexShader').textContent,
+                  fragmentShader: document.getElementById('fragmentShader').textContent,
+                  depthTest: false,
+                  depthWrite: false,
+                  side: THREE.DoubleSide
+                });
+                ambientPlane = new THREE.Mesh(ambientGeo, ambientMaterial);
+                ambientPlane.frustumCulled = false;
+                scene.add(ambientPlane);
+            } 
+            
+            function initDarkwaveMode() {
+                if (darkwaveInitialized) return;
+                const darkwaveGeo = new THREE.PlaneGeometry(2, 2);
+                darkwaveMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        u_time: { value: 0.0 },
+                        u_resolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+                        u_bass: { value: 0.0 },
+                        u_mid: { value: 0.0 },
+                        u_high: { value: 0.0 },
+                        u_pixel_density: { value: 120.0 },
+                        u_flow_speed: { value: 0.05 },
+                        u_distortion: { value: 0.25 },
+                        u_color: { value: new THREE.Color("#ffffff") } 
+                    },
+                    vertexShader: document.getElementById('vertexShader').textContent,
+                    fragmentShader: document.getElementById('darkwaveFragmentShader').textContent,
+                    depthTest: false,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                });
+                darkwavePlane = new THREE.Mesh(darkwaveGeo, darkwaveMaterial);
+                darkwavePlane.frustumCulled = false;
+                scene.add(darkwavePlane);
+                darkwaveInitialized = true;
+            }
+
+            function initCityScapeMode() {
+                if (cityscapeInitialized) return;
+                applyProfile('high');
+                applySettings();
+                 document.querySelectorAll('.profile-btn[data-profile]').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.profile === 'high') {
+                        btn.classList.add('active');
+                    }
+                });
+                cityscapeInitialized = true;
+            }
+
+            // ==========================================
+            // ===== NEW: Cityscape 2 (Streamer) Mode ===
+            // ==========================================
+            function initCityscape2Mode() {
+                if (cityscape2Initialized) return;
+
+                // 1. The Skyline (Screen-space Shader)
+                const skylineGeo = new THREE.PlaneGeometry(2, 2);
+                skylineMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        u_time: { value: 0.0 },
+                        u_resolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+                        u_color: { value: new THREE.Color(skylineColorInput.value) },
+                        u_bass: { value: 0.0 },
+                        u_mid: { value: 0.0 },
+                        u_high: { value: 0.0 }
+                    },
+                    vertexShader: document.getElementById('vertexShader').textContent, // Reuse simple pass-through
+                    fragmentShader: document.getElementById('skylineFragmentShader').textContent,
+                    depthTest: false,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                });
+                skylineMesh = new THREE.Mesh(skylineGeo, skylineMaterial);
+                skylineMesh.frustumCulled = false;
+                skylineMesh.renderOrder = -1; // Background
+                cityscape2Group.add(skylineMesh);
+
+                // 2. The Waveform (3D Mesh)
+                // High segment count for smooth wireframe waves
+                const geometry = new THREE.PlaneGeometry(60, 40, 64, 64);
+                
+                waveformMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        u_time: { value: 0.0 },
+                        u_bass: { value: 0.0 },
+                        u_mid: { value: 0.0 },
+                        u_high: { value: 0.0 },
+                        u_color: { value: new THREE.Color(waveformColorInput.value) },
+                        u_wave_height: { value: waveHeight }
+                    },
+                    vertexShader: document.getElementById('waveformVertexShader').textContent,
+                    fragmentShader: document.getElementById('waveformFragmentShader').textContent,
+                    wireframe: true,
+                    transparent: true,
+                    side: THREE.DoubleSide
+                });
+
+                waveformMesh = new THREE.Mesh(geometry, waveformMaterial);
+                
+                // Position above the city
+                waveformMesh.rotation.x = -Math.PI / 2.5; // Tilted slightly towards camera
+                waveformMesh.position.y = 8;
+                waveformMesh.position.z = -10;
+                
+                cityscape2Group.add(waveformMesh);
+
+                cityscape2Initialized = true;
+            }
+            
+            function switchVisualizationMode(mode) {
+              applySensitivity(sensitivityState.lastSetValue[mode]);
+                const controlPanel = document.getElementById('controlPanel');
+                const colorPanel = document.getElementById('colorPanel');
+                
+                // Reset visibility
+                cityscapeGroup.visible = false;
+                cityscape2Group.visible = false;
+                if (ambientPlane) ambientPlane.visible = false;
+                if (darkwavePlane) darkwavePlane.visible = false;
+                if (scene.fog) scene.fog.density = 0; 
+
+                controlPanel.className = 'panel-base'; 
+                colorPanel.className = 'panel-base';
+
+                if (mode === 'ambient') {
+                  if (!ambientPlane) initAmbientMode();
+                    if (ambientPlane) ambientPlane.visible = true;
+                    controlPanel.classList.add('mode-ambient');
+                    colorPanel.classList.add('mode-ambient');
+                } else if (mode === 'cityscape') {
+                    if (!cityscapeInitialized) initCityScapeMode();
+                    cityscapeGroup.visible = true;
+                    if(scene.fog) scene.fog.density = settings.fogDensity;
+                    controlPanel.classList.add('mode-cityscape');
+                    colorPanel.classList.add('mode-cityscape');
+
+                    // FIX: Restore camera perspective for Cityscape 1
+                    camera.position.set(0, 35, 10);
+                    camera.lookAt(0, 0, -50);
+
+                } else if (mode === 'darkwave') {
+                    if (!darkwaveInitialized) initDarkwaveMode();
+                    if (darkwavePlane) darkwavePlane.visible = true;
+                    controlPanel.classList.add('mode-darkwave');
+                    colorPanel.classList.add('mode-darkwave');
+                } else if (mode === 'cityscape2') {
+                    if (!cityscape2Initialized) initCityscape2Mode();
+                    cityscape2Group.visible = true;
+                    controlPanel.classList.add('mode-cityscape2');
+                    colorPanel.classList.add('mode-cityscape2');
+                    
+                    // Reset camera for this mode
+                    camera.position.set(0, 0, 20);
+                    camera.lookAt(0, 0, 0);
+                }
+            }
+
+
+      const HUE_BAND_BLEND = 0;
+      function animate() {
+          requestAnimationFrame(animate);
+
+          if (!currentVizMode) {
+              renderer.render(scene, camera);
+              return;
+          }
+
+          if (!audioSetupComplete && window.__SIR_AUDIO && !window.__SIR_AUDIO.paused) {
+            try { setupFrom(window.__SIR_AUDIO); } catch (_) {}
+          }
+          
+          let bass = 0, mid = 0, high = 0;
+          if (aBass && aMid && aHigh && ctx && audioSetupComplete) {
+              if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+              aBass.getByteFrequencyData(buf.b);
+              aMid.getByteFrequencyData(buf.m);
+              aHigh.getByteFrequencyData(buf.h);
+              bass = clamp(avg(buf.b) * 2.4, 0, 1);
+              mid = clamp(avg(buf.m) * 2.0, 0, 1);
+              high = clamp(avg(buf.h) * 2.6, 0, 1);
+
+              if (Math.random() < 0.1) {
+                  updateDebug('levels', `B:${bass.toFixed(2)} M:${mid.toFixed(2)} H:${high.toFixed(2)}`);
+                  if (bass > 0.01 || mid > 0.01 || high > 0.01) {
+                      updateDebug('audio', 'Audio detected!');
+                  }
+              }
+          } else if (Math.random() < 0.05) {
+              updateDebug('levels', 'No audio data');
+          }
+          
+          const t = clock.getElapsedTime();
+          // Safe small delta
+          const rawDelta = clock.getDelta();
+          const dt = Math.min(0.05, rawDelta > 0 ? rawDelta : 1/60);
+          
+          const sensitivityMultiplier = 1.0 / (settings.audioThreshold * 20.0);
+
+          if (currentVizMode === 'ambient' && ambientMaterial) {
+              const overallEnergy = Math.min(1.0, (bass + mid + high) / 3.0 * (sensitivityMultiplier * 0.5));
+              const highEnergy = Math.min(1.0, high * sensitivityMultiplier);
+              const MIN_BLOB_SPEED = 0.010;
+              const MIN_HUE_SPEED = 0.0;
+              const newBlobSpeed = MIN_BLOB_SPEED + overallEnergy * (maxBlobSpeed - MIN_BLOB_SPEED);
+              const newHueSpeed = MIN_HUE_SPEED + highEnergy * (maxHueSpeed - MIN_HUE_SPEED);
+              ambientMaterial.uniforms.u_time.value = t;
+              ambientMaterial.uniforms.u_blob_speed.value = newBlobSpeed;
+              ambientMaterial.uniforms.u_hue_speed.value = newHueSpeed;
+              ambientMaterial.uniforms.u_bass.value = bass * sensitivityMultiplier;
+              ambientMaterial.uniforms.u_mid.value = mid * sensitivityMultiplier;
+              ambientMaterial.uniforms.u_high.value = high * sensitivityMultiplier;
+
+          } else if (currentVizMode === 'darkwave' && darkwaveMaterial) {
+              darkwaveMaterial.uniforms.u_time.value = t;
+              darkwaveMaterial.uniforms.u_bass.value = bass * sensitivityMultiplier;
+              darkwaveMaterial.uniforms.u_mid.value = mid * sensitivityMultiplier;
+              darkwaveMaterial.uniforms.u_high.value = high * sensitivityMultiplier;
+              
+              const minDensity = 20.0;
+              const maxDensity = 250.0;
+              const period = 30.0; 
+              const frequency = (Math.PI * 2.0) / period;
+              const oscillation = (Math.sin(t * frequency) + 1.0) / 2.0;
+              const animatedDensity = minDensity + oscillation * (maxDensity - minDensity);
+              darkwaveMaterial.uniforms.u_pixel_density.value = animatedDensity;
+
+          } else if (currentVizMode === 'cityscape2') {
+             // Handle Streamer Mode Animation
+             if (skylineMaterial) {
+                 skylineMaterial.uniforms.u_time.value = t * simSpeed;
+                 skylineMaterial.uniforms.u_bass.value = bass * sensitivityMultiplier;
+                 skylineMaterial.uniforms.u_mid.value = mid * sensitivityMultiplier;
+                 skylineMaterial.uniforms.u_high.value = high * sensitivityMultiplier;
+             }
+             if (waveformMaterial) {
+                 waveformMaterial.uniforms.u_time.value = t * simSpeed;
+                 waveformMaterial.uniforms.u_bass.value = bass * sensitivityMultiplier;
+                 waveformMaterial.uniforms.u_mid.value = mid * sensitivityMultiplier;
+                 waveformMaterial.uniforms.u_high.value = high * sensitivityMultiplier;
+             }
+             
+             // Slow rotation for the waveform cloud
+             if(waveformMesh) {
+                 waveformMesh.rotation.z = Math.sin(t * 0.1) * 0.1;
+             }
+
+             // Auto Color Cycling
+             if (city2CycleSpeed > 0) {
+                 const speed = (city2CycleSpeed / 100) * 0.1;
+                 city2Hue += dt * speed;
+                 if (city2Hue > 1) city2Hue -= 1;
+                 
+                 // Skyline: Vibrant (L=0.5)
+                 if (skylineMaterial) {
+                     skylineMaterial.uniforms.u_color.value.setHSL(city2Hue, 1.0, 0.5);
+                 }
+                 // Waveform: Lighter (L=0.8)
+                 if (waveformMaterial) {
+                     waveformMaterial.uniforms.u_color.value.setHSL(city2Hue, 1.0, 0.8);
+                 }
+             }
+
+          } else if (currentVizMode === 'cityscape') {
+              nextBackZ = null;
+              const overall = Math.min(1, 0.5 * bass + 0.35 * mid + 0.15 * high);
+              const speed = BASE_SPEED + SPEED_BOOST * bass * 0.8;
+
+              if (SUBWAY_MAX > 0) {
+                  subwayTimer += dt;
+                  const spawnEnergyX = Math.min(1, 0.8 * bass + 0.2 * overall);
+                  const spawnIntervalX = 4 - 2.5 * spawnEnergyX;
+                  if (subwayTimer > spawnIntervalX && subwayTrains.length < SUBWAY_MAX) {
+                      subwayTimer = 0;
+                      const dir = Math.random() < 0.5 ? 1 : -1;
+                      const train = window.__makeSubwayTrain(dir);
+                      cityscapeGroup.add(train);
+                      subwayTrains.push(train);
+                  }
+
+                  zSubwaySpawnTimer += dt;
+                  const spawnEnergyZ = Math.min(1, 0.7 * bass + 0.3 * overall);
+                  const spawnIntervalZ = Z_SUBWAY_SPAWN_INTERVAL - 2.0 * spawnEnergyZ;
+                  if (zSubwaySpawnTimer > spawnIntervalZ && zSubwayTrains.length < SUBWAY_MAX) {
+                      zSubwaySpawnTimer = 0;
+                      const dir = (Math.random() < 0.5 ? 1 : -1);
+                      const zTrain = window.__makeZSubwayTrain(dir);
+                      cityscapeGroup.add(zTrain);
+                      zSubwayTrains.push(zTrain);
+                  }
+
+                  for (let i = subwayTrains.length - 1; i >= 0; i--) {
+                      const tr = subwayTrains[i];
+                      const depthFactor = Math.min(1.8, Math.max(0.8, 80 / Math.max(30, Math.abs(tr.userData.gridZ))));
+                      const v = SUBWAY_SPEED * (1 + 1.6 * bass) * depthFactor;
+                      tr.position.x += tr.userData.dir * v * (dt * MOTION_TUNE);
+                      tr.position.z += speed;
+                      const hue = (high > mid && high > bass) ? COLORS.high.h : (mid > bass) ? COLORS.mid.h : COLORS.bass.h;
+                      const audioBoost = SUBWAY_AUDIO_GAIN * (0.6 * bass + 0.4 * gridReactSmooth);
+                      const totalOpacity = Math.min(1.0, SUBWAY_BASE_OPACITY + audioBoost);
+                      const flickerBase = 0.9 + 0.1 * Math.sin(t * 2.0);
+                      tr.children.forEach((car, idx) => {
+                          const flicker = flickerBase + 0.05 * Math.sin(t * 2.6 + idx * 0.8);
+                          car.material.opacity = Math.max(0.1, Math.min(1, totalOpacity * flicker));
+                          car.material.color.setHSL(hue, 1.0, 0.60);
+                      });
+                      if (Math.abs(tr.position.x) > CITY_WIDTH * 0.9 + SUBWAY_LENGTH) {
+                          cityscapeGroup.remove(tr);
+                          subwayTrains.splice(i, 1);
+                      }
+                  }
+
+                  for (let i = zSubwayTrains.length - 1; i >= 0; i--) {
+                      const tr = zSubwayTrains[i];
+                      const dir = (tr.userData && (tr.userData.dir === 1 || tr.userData.dir === -1)) ? tr.userData.dir : 1;
+                      const depthFactor = Math.min(1.8, Math.max(0.8, 80 / Math.max(30, Math.abs(tr.position.z))));
+                      const v = Z_SUBWAY_SPEED * (1 + 1.4 * bass) * depthFactor;
+                      tr.position.z += dir * v * (dt * MOTION_TUNE);
+                      tr.position.z += speed;
+                      tr.position.y = Z_SUBWAY_Y + 0.1 * Math.sin(tr.position.z * 0.15);
+                      const hue = (high > mid && high > bass) ? COLORS.high.h : (mid > bass) ? COLORS.mid.h : COLORS.bass.h;
+                      const audioBoost = SUBWAY_AUDIO_GAIN * (0.5 * bass + 0.5 * gridReactSmooth);
+                      const totalOpacity = Math.min(1.0, Z_SUBWAY_BASE_OPACITY + audioBoost);
+                      const flickerBase = 0.92 + 0.08 * Math.sin(t * 2.3);
+                      tr.children.forEach((car, idx) => {
+                          const flicker = flickerBase + 0.04 * Math.sin(t * 2.0 + idx * 0.65);
+                          car.material.opacity = Math.max(0.1, Math.min(1, totalOpacity * flicker));
+                          car.material.color.setHSL(hue, 1.0, 0.60);
+                      });
+                      if (tr.position.z > Z_SUBWAY_NEAR_DESPAWN_Z || tr.position.z < Z_SUBWAY_FAR_DESPAWN_Z) {
+                          cityscapeGroup.remove(tr);
+                          zSubwayTrains.splice(i, 1);
+                      }
+                  }
+              }
+              
+              const maxAudio = Math.max(bass, mid, high);
+              const scaledMaxAudio = maxAudio * sensitivityMultiplier;
+              const scaledBass = bass * sensitivityMultiplier;
+              const scaledMid = mid * sensitivityMultiplier;
+              const scaledHigh = high * sensitivityMultiplier;
+              const starTargetReact = Math.min(1, Math.pow(scaledMaxAudio, 0.7));
+              starReactSmooth = starReactSmooth + (starTargetReact - starReactSmooth) * STAR_SMOOTHING;
+              const gridTargetReact = Math.min(1, Math.pow(scaledMaxAudio, 0.8));
+              gridReactSmooth = gridReactSmooth + (gridTargetReact - gridReactSmooth) * GRID_SMOOTHING;
+
+              if (stars && starGeo) {
+                  const baseStarSpeed = STAR_MOVE_SPEED * (dt * MOTION_TUNE) * (1 + starReactSmooth);
+                  const posArray = starGeo.attributes.position.array;
+                  for (let i = 0; i < STAR_COUNT; i++) {
+                      const i3 = i * 3;
+                      const velocity = starVelocities[i];
+                      posArray[i3] += baseStarSpeed * velocity;
+                      if (posArray[i3] > 8000) posArray[i3] = -8000 + (posArray[i3] - 8000);
+                  }
+                  starGeo.attributes.position.needsUpdate = true;
+                  starMat.size = STAR_BASE_SIZE + STAR_SIZE_GAIN * starReactSmooth;
+                  starMat.opacity = STAR_OPA_BASE + STAR_OPA_GAIN * starReactSmooth;
+                  const starHue = (high > mid && high > bass) ? 0.15 : (mid > bass) ? 0.55 : 0.65;
+                  const starColorMix = 0.3 * starReactSmooth;
+                  starMat.color.setHSL(starHue, starColorMix, 1.0);
+              }
+
+              // Use standard camera look for city
+              camera.lookAt(0, 10, -50);
+
+              buildings.forEach(g => {
+                  g.position.z += speed;
+                  const h = g.userData.baseH;
+                  g.scale.y = 1;
+                  g.position.y = h / 2;
+                  if (g.position.z > 20) resetBuilding(g);
+                  const baseRGB = toRGB(g.userData.baseHue, COLORS.base.s, WINDOW_BASE_L);
+                  for (const panes of g.userData.facadePanes) {
+                      const wins = panes.userData.windows;
+                      const arr = panes.geometry.attributes.color.array;
+                      for (const w of wins) w.bright = Math.max(0, w.bright - WINDOW_LIGHT_DECAY);
+                      const scaledLoud = Math.min(1, Math.max(scaledBass, scaledMid, scaledHigh));
+                      const sparks = Math.floor(0.25 + 3.0 * scaledLoud);
+                      for (let s = 0; s < sparks; s++) {
+                          const w = wins[(Math.random() * wins.length) | 0];
+                          w.bright = Math.max(w.bright, 0.3 + 0.7 * scaledLoud);
+                      }
+                      const bandHue = (scaledHigh > scaledMid && scaledHigh > scaledBass) ? COLORS.high.h : (scaledMid > scaledBass) ? COLORS.mid.h : COLORS.bass.h;
+                      for (const w of wins) {
+                          const mixHue = (1 - HUE_BAND_BLEND) * (window.PALETTE ? window.PALETTE[0] : 0) + HUE_BAND_BLEND * bandHue;
+                          let sWin = w.sat;
+                          let lWin = window.PALETTE_PICK ? window.PALETTE_PICK.l : w.litL; 
+                          if (window.PALETTE_PICK && window.PALETTE_PICK.s < 1e-3) {
+                            sWin = 0.0;
+                          }
+                          const litRGB = toRGB(mixHue, sWin, lWin);
+                          const b = w.bright;
+                          const r = baseRGB[0] * (1 - b) + litRGB[0] * b;
+                          const gC = baseRGB[1] * (1 - b) + litRGB[1] * b;
+                          const bC = baseRGB[2] * (1 - b) + litRGB[2] * b;
+                          for (let i = 0; i < w.count; i++) {
+                              const idx = (w.start + i) * 3;
+                              arr[idx] = r;
+                              arr[idx + 1] = gC;
+                              arr[idx + 2] = bC;
+                          }
+                      }
+                      panes.geometry.attributes.color.needsUpdate = true;
+                  }
+              });
+
+              groundTiles.forEach(ti => {
+                  ti.mesh.position.z += speed;
+                  const baseGlow = settings.gridOpacity;
+                  const glow = Math.min(1, baseGlow + 1.2 * gridReactSmooth);
+                  const hue = settings.gridBaseHue + 0.3 * gridReactSmooth * Math.sin(t * 0.5);
+                  const baseLit = 0.35;
+                  const lit = baseLit + 0.6 * gridReactSmooth;
+                  ti.mats.forEach(m => {
+                      m.opacity = glow;
+                      if (m.color && m.color.isColor) m.color.setHSL(hue % 1, 1, lit);
+                  });
+              });
+
+              const recycleZ = camera.position.z + GROUND_SIZE * 0.5;
+              for (const tTile of groundTiles) {
+                  if (tTile.mesh.position.z > recycleZ) {
+                      zTail -= GROUND_SIZE;
+                      tTile.mesh.position.z = zTail;
+                  }
+              }
+
+              horizon.material.opacity = 0.18 + overall * 0.30;
+              const hHue = 0.56 + 0.06 * mid;
+              const hLit = 0.07 + 0.18 * overall;
+              horizon.material.color.setHSL(hHue % 1, 1, hLit);
+              if (scene.fog) scene.fog.density = settings.fogDensity + bass * 0.006;
+          }
+
+          renderer.render(scene, camera);
+      }
+
+            addEventListener('resize', ()=>{
+              camera.aspect = innerWidth/innerHeight;
+              camera.updateProjectionMatrix();
+              renderer.setSize(innerWidth, innerHeight);
+              if (ambientMaterial) {
+                ambientMaterial.uniforms.u_resolution.value.set(innerWidth, innerHeight);
+              }
+              if (darkwaveMaterial) {
+                darkwaveMaterial.uniforms.u_resolution.value.set(innerWidth, innerHeight);
+              }
+               if (skylineMaterial) {
+                skylineMaterial.uniforms.u_resolution.value.set(innerWidth, innerHeight);
+              }
+            });
+
+      // --- Set initial UI and begin the animation loop ---
+            updateDebug('three', 'Waiting for user selection...');
+            
+            // Start loop
+            animate();
+            
+    });
+  </script>
+  
+  <div id="changeIndicator"></div>
+
+</body>
+</html>
